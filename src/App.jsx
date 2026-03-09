@@ -241,10 +241,24 @@ function AuthScreen({ onDone, T }) {
   };
   const finish=()=>{
     if(!name.trim()){setErr("Please enter your name.");return;}
-    const r=regUser(email,name,plan);
+    const r=regUser(email,name,"free"); // start as free, upgrade after payment
     if(!r.ok){setErr(r.msg);return;}
-    setSuccess(true);
-    setTimeout(()=>onDone(r.user),1200);
+    if(plan==="pro"||plan==="enterprise"){
+      // Save user first then redirect to PayPal
+      const prices={pro:"19.00",enterprise:"99.00"};
+      const amount=prices[plan];
+      // Store pending plan in user object
+      USERS_DB[email].pendingPlan=plan;
+      setSuccess(true);
+      setTimeout(()=>{
+        onDone(r.user);
+        // Small delay then show pricing
+        setTimeout(()=>{ window.dispatchEvent(new CustomEvent("gotoPricing")); },500);
+      },1200);
+    } else {
+      setSuccess(true);
+      setTimeout(()=>onDone(r.user),1200);
+    }
   };
 
   const plans=[
@@ -1980,17 +1994,31 @@ function PricingPage({ user, setUser, T }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Data4U() {
   const [user,setUser]=useState(null);
-  const updateUser=(u)=>setUser({...u});
   const [page,setPage]=useState("home");
   const [dark,setDark]=useState(true);
   const [data,setData]=useState(null);
   const T=useTheme(dark);
 
+  // After register with paid plan → go to pricing
+  useEffect(()=>{
+    const handler=()=>setPage("pricing");
+    window.addEventListener("gotoPricing",handler);
+    return ()=>window.removeEventListener("gotoPricing",handler);
+  },[]);
+
+  const handleLogin=(u)=>{
+    setUser(u);
+    // If user has pending plan → go to pricing to pay
+    if(u.pendingPlan){
+      setTimeout(()=>setPage("pricing"),600);
+    }
+  };
+
   return (
     <div style={{minHeight:"100vh",background:T.bg,color:T.text,fontFamily:"'Syne',sans-serif"}}>
       <GlobalStyles T={T}/>
       {!user?(
-        <AuthScreen onDone={setUser} T={T}/>
+        <AuthScreen onDone={handleLogin} T={T}/>
       ):(
         <>
           <NavBar user={user} page={page} setPage={setPage} dark={dark} setDark={setDark} data={data} T={T}/>
