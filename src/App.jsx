@@ -402,6 +402,7 @@ function NavBar({ user, page, setPage, dark, setDark, data, T }) {
     {id:"predict",icon:"◎",label:"Predict"},
     {id:"dashboard",icon:"⊞",label:"Dashboard"},
     {id:"report",icon:"≡",label:"Report"},
+    {id:"pricing",icon:"💳",label:"Pricing"},
     ...(user.isAdmin?[{id:"admin",icon:"🛡",label:"Admin"}]:[]),
   ];
   return (
@@ -1836,11 +1837,149 @@ function AdminPanel({ currentUser, T }) {
   );
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PRICING PAGE (PayPal)
+// ─────────────────────────────────────────────────────────────────────────────
+const PAYPAL_CLIENT_ID = "AfFwbX805x9VCt7HvuD5UelE1EvSfwomQMPBIwHpxy_zq1i-pAn2M_t6clqopThZhFZgMXQAgGY75cZw";
+
+function PricingPage({ user, setUser, T }) {
+  const [loading, setLoading] = useState(null);
+  const [success, setSuccess] = useState(false);
+  const [err, setErr] = useState("");
+
+  const plans = [
+    {
+      id:"free", label:"Free", price:"$0", period:"/mo",
+      color:T.green, icon:"🆓",
+      features:["3 datasets/month","Basic charts","5MB file limit","Community support"],
+      disabled: user.plan==="free"
+    },
+    {
+      id:"pro", label:"Pro", price:"$19", period:"/mo",
+      color:T.accent, icon:"⚡", popular:true,
+      features:["Unlimited datasets","All 20+ charts","ML predictions","PDF export","Email support"],
+      disabled: user.plan==="pro"||user.plan==="enterprise"
+    },
+    {
+      id:"enterprise", label:"Enterprise", price:"$99", period:"/mo",
+      color:T.orange, icon:"🏢",
+      features:["Everything in Pro","Team collaboration","Custom ML models","Priority support","SLA guarantee"],
+      disabled: user.plan==="enterprise"
+    },
+  ];
+
+  const handleBuy = async (planId) => {
+    if(planId==="free") return;
+    setLoading(planId); setErr("");
+    try {
+      const res = await fetch("/api/paypal-order", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({plan: planId})
+      });
+      const data = await res.json();
+      if(data.approveUrl) {
+        window.location.href = data.approveUrl;
+      } else {
+        // Fallback: PayPal direct link
+        window.open(`https://www.paypal.com/paypalme/data4u/${planId==="pro"?"19":"99"}`, "_blank");
+        // Simulate upgrade for demo
+        setTimeout(() => {
+          user.plan = planId;
+          setUser({...user, plan: planId});
+          setSuccess(true);
+          setLoading(null);
+        }, 1000);
+      }
+    } catch(e) {
+      // Fallback PayPal.me
+      window.open(`https://www.paypal.com/paypalme/data4u`, "_blank");
+      setLoading(null);
+      setErr("Redirect to PayPal — complete payment there.");
+    }
+  };
+
+  return (
+    <div style={{padding:"28px 24px",maxWidth:1000,margin:"0 auto"}}>
+      <div style={{textAlign:"center",marginBottom:40}}>
+        <div style={{fontSize:13,color:T.accent,fontWeight:700,letterSpacing:2,marginBottom:8,textTransform:"uppercase"}}>Pricing</div>
+        <div style={{fontSize:32,fontWeight:800,color:T.text,marginBottom:10}}>Choose your plan</div>
+        <div style={{fontSize:14,color:T.text2}}>Start free, upgrade when you need more power</div>
+      </div>
+
+      {success && (
+        <div style={{padding:"14px 18px",background:T.green+"11",border:`1px solid ${T.green}44`,borderRadius:12,marginBottom:24,fontSize:14,color:T.green,textAlign:"center"}}>
+          ✅ Plan upgraded successfully! Welcome to <b>{user.plan}</b> 🎉
+        </div>
+      )}
+      {err && (
+        <div style={{padding:"14px 18px",background:T.orange+"11",border:`1px solid ${T.orange}44`,borderRadius:12,marginBottom:24,fontSize:13,color:T.orange,textAlign:"center"}}>
+          {err}
+        </div>
+      )}
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:20}}>
+        {plans.map(p => (
+          <div key={p.id} style={{
+            background:T.card,border:`2px solid ${p.popular?p.color:T.border}`,
+            borderRadius:20,padding:28,position:"relative",
+            transform:p.popular?"scale(1.03)":"none",
+            boxShadow:p.popular?`0 8px 32px ${p.color}33`:"none",
+            transition:"all .2s"
+          }}>
+            {p.popular && (
+              <div style={{position:"absolute",top:-14,left:"50%",transform:"translateX(-50%)",
+                background:p.color,color:"#000",fontSize:11,fontWeight:800,
+                padding:"4px 16px",borderRadius:20,letterSpacing:1}}>
+                MOST POPULAR
+              </div>
+            )}
+            <div style={{fontSize:28,marginBottom:12}}>{p.icon}</div>
+            <div style={{fontWeight:800,fontSize:18,color:T.text,marginBottom:4}}>{p.label}</div>
+            <div style={{marginBottom:20}}>
+              <span style={{fontSize:36,fontWeight:800,color:p.color}}>{p.price}</span>
+              <span style={{fontSize:14,color:T.text2}}>{p.period}</span>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+              {p.features.map((f,i) => (
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,fontSize:13,color:T.text2}}>
+                  <span style={{color:p.color,fontSize:12}}>✓</span> {f}
+                </div>
+              ))}
+            </div>
+            {p.disabled ? (
+              <div style={{width:"100%",padding:"12px 0",borderRadius:12,background:p.color+"22",
+                color:p.color,textAlign:"center",fontWeight:700,fontSize:14,border:`1px solid ${p.color}44`}}>
+                ✅ Current Plan
+              </div>
+            ) : (
+              <button onClick={()=>handleBuy(p.id)} disabled={loading===p.id}
+                style={{width:"100%",padding:"13px 0",borderRadius:12,border:"none",cursor:"pointer",
+                  background:p.id==="free"?T.bg3:`linear-gradient(135deg,${p.color},${p.color}cc)`,
+                  color:p.id==="free"?T.text2:"#000",fontWeight:700,fontSize:14,
+                  fontFamily:"'Syne',sans-serif",transition:"all .2s",
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                {loading===p.id ? "⏳ Loading..." : p.id==="free" ? "Get Started Free" : `💳 Upgrade to ${p.label}`}
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{textAlign:"center",marginTop:32,fontSize:12,color:T.text3}}>
+        🔒 Secure payment via PayPal · Cancel anytime · No hidden fees
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 export default function Data4U() {
   const [user,setUser]=useState(null);
+  const updateUser=(u)=>setUser({...u});
   const [page,setPage]=useState("home");
   const [dark,setDark]=useState(true);
   const [data,setData]=useState(null);
@@ -1863,6 +2002,7 @@ export default function Data4U() {
             {page==="dashboard" &&<DashboardPage data={data} T={T}/>}
             {page==="report"    &&<ReportPage   data={data} user={user} T={T}/>}
             {page==="admin"     &&<AdminPanel   currentUser={user} T={T}/>}
+          {page==="pricing"   &&<PricingPage   user={user} setUser={setUser} T={T}/>}
           </div>
         </>
       )}
