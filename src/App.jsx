@@ -317,7 +317,7 @@ function AuthScreen({ onDone, T }) {
                 </>
               )}
 
-              {/* ── REGISTER: email verification code ── */}
+              {/* ── REGISTER step 1: email ── */}
               {step===1&&tab==="register"&&(
                 <>
                   <input className="input-style" placeholder="Email address" value={email}
@@ -331,7 +331,7 @@ function AuthScreen({ onDone, T }) {
                   ):(
                     <>
                       <div style={{padding:"10px 14px",background:T.accentBg,borderRadius:8,border:`1px solid ${T.accent}44`,fontSize:13,color:T.accent,marginBottom:12,fontFamily:"'JetBrains Mono',monospace"}}>
-                        🔑 Code (demo): <b>{code}</b>
+                        🔑 Code: <b>{code}</b>
                       </div>
                       <input className="input-style" placeholder="Enter verification code" value={codeIn}
                         onChange={e=>setCodeIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&verify()}
@@ -344,6 +344,7 @@ function AuthScreen({ onDone, T }) {
                 </>
               )}
 
+              {/* ── REGISTER step 2: name + plan ── */}
               {step===2&&tab==="register"&&(
                 <>
                   <input className="input-style" placeholder="Full name" value={name}
