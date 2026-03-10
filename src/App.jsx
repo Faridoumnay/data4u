@@ -1763,63 +1763,28 @@ function AdminPanel({ currentUser, T }) {
   
   const refresh=async()=>{
     try{
-      const r=await fetch("https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?select=*",{
-        headers:{
-          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
-          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl"
-        }
-      });
+      const r=await fetch("/api/admin-users");
       const data=await r.json();
-      setUsers(data);
-    }catch(e){ setUsers(Object.values(USERS_DB)); }
+      if(Array.isArray(data)) setUsers(data);
+    }catch(e){ setUsers([]); }
   };
 
   useEffect(()=>{ refresh(); },[]);
   const ban=async(email)=>{
     if(email===ADMIN_EMAIL)return;
-    const newBanned=!USERS_DB[email].banned;
-    try{
-      await fetch(`https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?email=eq.${encodeURIComponent(email)}`,{
-        method:"PATCH",
-        headers:{
-          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
-          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({banned:newBanned})
-      });
-    }catch(e){}
-    USERS_DB[email].banned=newBanned;
+    const user=users.find(u=>u.email===email);
+    const newBanned=!user?.banned;
+    try{ await fetch("/api/admin-update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,banned:newBanned})}); }catch(e){}
     refresh();
   };
   const del=async(email)=>{
     if(email===ADMIN_EMAIL)return;
-    try{
-      await fetch(`https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?email=eq.${encodeURIComponent(email)}`,{
-        method:"DELETE",
-        headers:{
-          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
-          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl"
-        }
-      });
-    }catch(e){}
-    delete USERS_DB[email];
+    try{ await fetch("/api/admin-update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,action:"delete"})}); }catch(e){}
     setSelected(null);
     refresh();
   };
   const plan=async(email,p)=>{
-    try{
-      await fetch(`https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?email=eq.${encodeURIComponent(email)}`,{
-        method:"PATCH",
-        headers:{
-          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
-          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
-          "Content-Type":"application/json"
-        },
-        body:JSON.stringify({plan:p})
-      });
-    }catch(e){}
-    USERS_DB[email].plan=p;
+    try{ await fetch("/api/admin-update",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,plan:p})}); }catch(e){}
     refresh();
   };
   const totalUp=users.reduce((s,u)=>s+(u.uploads||0),0);
