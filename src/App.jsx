@@ -199,7 +199,7 @@ function AuthScreen({ onDone, T }) {
   const [step,setStep]=useState(1);
   const [email,setEmail]=useState("");
   const [name,setName]=useState("");
-  const [plan,setPlan]=useState("free");
+  const [plan,setPlan]=useState("pro");
   const [code,setCode]=useState("");
   const [codeIn,setCodeIn]=useState("");
   const [sent,setSent]=useState(false);
@@ -226,13 +226,20 @@ function AuthScreen({ onDone, T }) {
     setErr("No account found. Please register first.");
   };
 
-  // REGISTER: send code for email verification
-  const sendCode=()=>{
+  // REGISTER: send real email verification code
+  const sendCode=async()=>{
     if(!email.includes("@")){setErr("Invalid email address.");return;}
     setErr("");setLoading(true);
     const c=Math.random().toString(36).slice(2,8).toUpperCase();
     setCode(c);
-    setTimeout(()=>{setLoading(false);setSent(true);},800);
+    try{
+      await fetch("/api/send-email",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({to:email,code:c})
+      });
+    }catch(e){ console.log("Email API error",e); }
+    setLoading(false);setSent(true);
   };
   const verify=()=>{
     if(codeIn.toUpperCase()!==code){setErr("Incorrect code. Try again.");return;}
@@ -245,13 +252,8 @@ function AuthScreen({ onDone, T }) {
     if(!name.trim()){setErr("Please enter your name.");return;}
     const r=regUser(email,name,plan);
     if(!r.ok){setErr(r.msg);return;}
-    if(plan==="pro"||plan==="enterprise"){
-      const prices={pro:"19.00",enterprise:"99.00"};
-      setPendingPayment({user:r.user, plan, amount:prices[plan]});
-    } else {
-      setSuccess(true);
-      setTimeout(()=>onDone(r.user),1200);
-    }
+    const prices={pro:"20.00",enterprise:"99.00"};
+    setPendingPayment({user:r.user, plan, amount:prices[plan]||"20.00"});
   };
 
   const completePayment=()=>{
@@ -264,9 +266,8 @@ function AuthScreen({ onDone, T }) {
   };
 
   const plans=[
-    {id:"free",label:"Free",price:"$0/mo",features:["3 datasets/mo","Basic charts","5MB limit"],icon:"🆓",color:T.green},
-    {id:"pro",label:"Pro",price:"$19/mo",features:["Unlimited datasets","All charts + AI","Full PDF report"],icon:"⚡",color:T.accent,popular:true},
-    {id:"enterprise",label:"Enterprise",price:"$99/mo",features:["Team collaboration","Custom models","Priority support"],icon:"🏢",color:T.orange},
+    {id:"pro",label:"Pro",price:"$20/report",features:["Unlimited datasets","All 20+ charts","ML predictions","Full PDF report","Email support"],icon:"⚡",color:T.accent,popular:true},
+    {id:"enterprise",label:"Enterprise",price:"$99/mo",features:["Team collaboration","Custom models","Priority support","SLA guarantee"],icon:"🏢",color:T.orange},
   ];
 
   return (
@@ -295,16 +296,24 @@ function AuthScreen({ onDone, T }) {
             <div style={{textAlign:"center",padding:32}}>
               <div style={{fontSize:56,marginBottom:12}}>💳</div>
               <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:8}}>Complete Payment</div>
-              <div style={{fontSize:13,color:T.text2,marginBottom:6}}>
-                Account created! Now complete your <b style={{color:T.accent}}>{pendingPayment.plan}</b> plan payment.
+              <div style={{fontSize:13,color:T.text2,marginBottom:16,lineHeight:1.6}}>
+                Account created! ✅<br/>
+                Click the button below to pay for your <b style={{color:T.accent}}>{pendingPayment.plan}</b> plan.
               </div>
-              <div style={{fontSize:28,fontWeight:800,color:T.accent,marginBottom:20,fontFamily:"'JetBrains Mono',monospace"}}>
+              <div style={{fontSize:32,fontWeight:800,color:T.accent,marginBottom:8,fontFamily:"'JetBrains Mono',monospace"}}>
                 ${pendingPayment.amount}/mo
               </div>
-              <button className="btn-primary" onClick={completePayment}
-                style={{width:"100%",padding:"14px 0",borderRadius:12,fontSize:15,marginBottom:10}}>
+              <div style={{fontSize:12,color:T.text3,marginBottom:20}}>
+                You will be redirected to PayPal in a new tab
+              </div>
+              <a href={`https://www.paypal.com/paypalme/faridoumnay/${pendingPayment.amount}`}
+                target="_blank" rel="noreferrer"
+                onClick={()=>setTimeout(()=>onDone(pendingPayment.user),1000)}
+                style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,fontSize:15,
+                  background:`linear-gradient(135deg,#009cde,#003087)`,color:"#fff",
+                  fontWeight:700,textDecoration:"none",marginBottom:10,fontFamily:"'Syne',sans-serif"}}>
                 💳 Pay with PayPal
-              </button>
+              </a>
               <button onClick={skipPayment}
                 style={{width:"100%",padding:"10px 0",borderRadius:12,fontSize:13,background:"transparent",
                   border:`1px solid ${T.border}`,color:T.text2,cursor:"pointer",fontFamily:"'Syne',sans-serif"}}>
