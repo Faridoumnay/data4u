@@ -253,12 +253,8 @@ function AuthScreen({ onDone, T }) {
       if(!r.ok){setErr(data.error||"Registration failed.");setLoading(false);return;}
       setLoading(false);
       const prices={pro:"20.00",enterprise:"99.00"};
-      if(plan==="pro"||plan==="enterprise"){
-        setPendingPayment({user:{...data.user,isAdmin:false}, plan, amount:prices[plan]||"20.00"});
-      } else {
-        setSuccess(true);
-        setTimeout(()=>onDone({...data.user,isAdmin:false}),1200);
-      }
+      // Always require payment
+      setPendingPayment({user:{...data.user,isAdmin:false}, plan, amount:prices[plan]||"20.00"});
     }catch(e){setErr("Network error. Try again.");setLoading(false);}
   };
 
@@ -275,9 +271,10 @@ function AuthScreen({ onDone, T }) {
   };
 
   const plans=[
-    {id:"pro",label:"Pro",price:"$20/report",features:["Unlimited datasets","All 20+ charts","ML predictions","Full PDF report","Email support"],icon:"⚡",color:T.accent,popular:true},
-    {id:"enterprise",label:"Enterprise",price:"$99/mo",features:["Team collaboration","Custom models","Priority support","SLA guarantee"],icon:"🏢",color:T.orange},
+    {id:"pro",label:"Pro",price:"$20",period:"per report",features:["Full data analysis","All 20+ charts","ML predictions","1 PDF report per payment","Email support"],icon:"⚡",color:T.accent,popular:true},
+    {id:"enterprise",label:"Enterprise",price:"$99",period:"/month",features:["Unlimited reports","Team collaboration","Custom ML models","Priority support","SLA guarantee"],icon:"🏢",color:T.orange},
   ];
+  // No free plan — all users must pay
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"stretch",overflow:"hidden"}}>
@@ -317,17 +314,16 @@ function AuthScreen({ onDone, T }) {
               </div>
               <a href={`https://www.paypal.com/paypalme/faridoumnay/${pendingPayment.amount}`}
                 target="_blank" rel="noreferrer"
-                onClick={()=>setTimeout(()=>onDone(pendingPayment.user),1000)}
+                onClick={()=>completePayment()}
                 style={{display:"block",width:"100%",padding:"14px 0",borderRadius:12,fontSize:15,
                   background:`linear-gradient(135deg,#009cde,#003087)`,color:"#fff",
-                  fontWeight:700,textDecoration:"none",marginBottom:10,fontFamily:"'Syne',sans-serif"}}>
-                💳 Pay with PayPal
+                  fontWeight:700,textDecoration:"none",marginBottom:10,fontFamily:"'Syne',sans-serif",
+                  textAlign:"center"}}>
+                💳 Pay with PayPal — ${pendingPayment.amount}
               </a>
-              <button onClick={skipPayment}
-                style={{width:"100%",padding:"10px 0",borderRadius:12,fontSize:13,background:"transparent",
-                  border:`1px solid ${T.border}`,color:T.text2,cursor:"pointer",fontFamily:"'Syne',sans-serif"}}>
-                Pay later (continue with Free)
-              </button>
+              <div style={{fontSize:11,color:T.text3,textAlign:"center",marginTop:8}}>
+                After payment, you will access the app with <b style={{color:T.accent}}>{pendingPayment.plan}</b> plan ✅
+              </div>
             </div>
           ) : success ? (
             <div style={{textAlign:"center",padding:40}}>
@@ -1608,8 +1604,22 @@ function ReportPage({ data, user, T }) {
     return {col:c,total:sum(vals),avg:avg(vals).toFixed(2),min:minn(vals).toFixed(2),max:maxx(vals).toFixed(2)};
   });
 
+  const [showPayment,setShowPayment]=useState(false);
+
   const generate=()=>{
-    if(user.plan==="free"){alert("PDF Export is a Pro feature. Upgrade to unlock full report generation.");return;}
+    if(user.plan==="enterprise"){
+      // Enterprise unlimited
+      setGenerating(true);
+      setTimeout(()=>{setGenerating(false);setGenerated(true);},2000);
+    } else {
+      // Pro: pay per report
+      setShowPayment(true);
+    }
+  };
+
+  const confirmPayAndGenerate=()=>{
+    window.open("https://www.paypal.com/paypalme/faridoumnay/20","_blank");
+    setShowPayment(false);
     setGenerating(true);
     setTimeout(()=>{setGenerating(false);setGenerated(true);},2000);
   };
@@ -1634,9 +1644,22 @@ function ReportPage({ data, user, T }) {
         </div>
       </div>
 
-      {user.plan==="free"&&(
-        <div style={{padding:"14px 18px",background:T.orange+"11",border:`1px solid ${T.orange}44`,borderRadius:12,marginBottom:20,fontSize:13,color:T.orange}}>
-          ⚡ PDF export is a <b>Pro feature</b>. Upgrade to export professional reports with all charts and insights.
+      {showPayment&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,bottom:0,background:"#000000AA",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div style={{background:T.card,border:`1px solid ${T.accent}44`,borderRadius:20,padding:36,maxWidth:400,width:"90%",textAlign:"center"}}>
+            <div style={{fontSize:48,marginBottom:12}}>💳</div>
+            <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:8}}>Generate PDF Report</div>
+            <div style={{fontSize:13,color:T.text2,marginBottom:20,lineHeight:1.6}}>Pay <b style={{color:T.accent}}>$20</b> to generate and download your professional PDF report.</div>
+            <a href="https://www.paypal.com/paypalme/faridoumnay/20" target="_blank" rel="noreferrer"
+              onClick={()=>{setShowPayment(false);setGenerating(true);setTimeout(()=>{setGenerating(false);setGenerated(true);},2000);}}
+              style={{display:"block",padding:"14px 0",borderRadius:12,fontSize:15,background:"linear-gradient(135deg,#009cde,#003087)",color:"#fff",fontWeight:700,textDecoration:"none",marginBottom:10,fontFamily:"'Syne',sans-serif"}}>
+              💳 Pay $20 with PayPal
+            </a>
+            <button onClick={()=>setShowPayment(false)}
+              style={{width:"100%",padding:"10px 0",borderRadius:12,fontSize:13,background:"transparent",border:`1px solid ${T.border}`,color:T.text2,cursor:"pointer",fontFamily:"'Syne',sans-serif"}}>
+              Cancel
+            </button>
+          </div>
         </div>
       )}
 
@@ -1911,15 +1934,15 @@ function PricingPage({ user, setUser, T }) {
       disabled: user.plan==="free"
     },
     {
-      id:"pro", label:"Pro", price:"$19", period:"/mo",
+      id:"pro", label:"Pro", price:"$20", period:"per report",
       color:T.accent, icon:"⚡", popular:true,
-      features:["Unlimited datasets","All 20+ charts","ML predictions","PDF export","Email support"],
-      disabled: user.plan==="pro"||user.plan==="enterprise"
+      features:["Full data analysis","All 20+ charts","ML predictions","1 PDF report per payment","Email support"],
+      disabled: false
     },
     {
-      id:"enterprise", label:"Enterprise", price:"$99", period:"/mo",
+      id:"enterprise", label:"Enterprise", price:"$99", period:"/month",
       color:T.orange, icon:"🏢",
-      features:["Everything in Pro","Team collaboration","Custom ML models","Priority support","SLA guarantee"],
+      features:["Unlimited reports","Team collaboration","Custom ML models","Priority support","SLA guarantee"],
       disabled: user.plan==="enterprise"
     },
   ];
