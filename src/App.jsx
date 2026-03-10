@@ -241,20 +241,15 @@ function AuthScreen({ onDone, T }) {
   };
   const finish=()=>{
     if(!name.trim()){setErr("Please enter your name.");return;}
-    const r=regUser(email,name,"free"); // start as free, upgrade after payment
+    const r=regUser(email,name,plan);
     if(!r.ok){setErr(r.msg);return;}
     if(plan==="pro"||plan==="enterprise"){
-      // Save user first then redirect to PayPal
       const prices={pro:"19.00",enterprise:"99.00"};
       const amount=prices[plan];
-      // Store pending plan in user object
-      USERS_DB[email].pendingPlan=plan;
+      // Open PayPal payment page directly
+      window.open(`https://www.paypal.com/paypalme/faridoumnay/${amount}`, "_blank");
       setSuccess(true);
-      setTimeout(()=>{
-        onDone(r.user);
-        // Small delay then show pricing
-        setTimeout(()=>{ window.dispatchEvent(new CustomEvent("gotoPricing")); },500);
-      },1200);
+      setTimeout(()=>onDone(r.user),1500);
     } else {
       setSuccess(true);
       setTimeout(()=>onDone(r.user),1200);
