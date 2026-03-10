@@ -209,21 +209,17 @@ function AuthScreen({ onDone, T }) {
 
   const reset=()=>{setStep(1);setSent(false);setErr("");setCode("");setCodeIn("");};
 
-  // LOGIN: admin + registered users → direct, no code needed
-  const handleLogin=()=>{
+  // LOGIN: call real API
+  const handleLogin=async()=>{
     if(!email.includes("@")){setErr("Invalid email address.");return;}
-    setErr("");
-    if(email===ADMIN_EMAIL){
-      const r=logUser(email);
-      if(!r.ok){setErr(r.msg);return;}
-      onDone(r.user); return;
-    }
-    if(USERS_DB[email]){
-      const r=logUser(email);
-      if(!r.ok){setErr(r.msg);return;}
-      onDone(r.user); return;
-    }
-    setErr("No account found. Please register first.");
+    setErr("");setLoading(true);
+    try{
+      const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+      const data=await r.json();
+      if(!r.ok){setErr(data.error||"Login failed.");setLoading(false);return;}
+      setLoading(false);
+      onDone({...data.user,isAdmin:data.user.is_admin});
+    }catch(e){setErr("Network error. Try again.");setLoading(false);}
   };
 
   // REGISTER: send real email verification code
@@ -248,17 +244,30 @@ function AuthScreen({ onDone, T }) {
   };
   const [pendingPayment,setPendingPayment]=useState(null);
 
-  const finish=()=>{
+  const finish=async()=>{
     if(!name.trim()){setErr("Please enter your name.");return;}
-    const r=regUser(email,name,plan);
-    if(!r.ok){setErr(r.msg);return;}
-    const prices={pro:"20.00",enterprise:"99.00"};
-    setPendingPayment({user:r.user, plan, amount:prices[plan]||"20.00"});
+    setErr("");setLoading(true);
+    try{
+      const r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,name,plan})});
+      const data=await r.json();
+      if(!r.ok){setErr(data.error||"Registration failed.");setLoading(false);return;}
+      setLoading(false);
+      const prices={pro:"20.00",enterprise:"99.00"};
+      if(plan==="pro"||plan==="enterprise"){
+        setPendingPayment({user:{...data.user,isAdmin:false}, plan, amount:prices[plan]||"20.00"});
+      } else {
+        setSuccess(true);
+        setTimeout(()=>onDone({...data.user,isAdmin:false}),1200);
+      }
+    }catch(e){setErr("Network error. Try again.");setLoading(false);}
   };
 
-  const completePayment=()=>{
-    window.open(`https://www.paypal.com/paypalme/faridoumnay/${pendingPayment.amount}`, "_blank");
-    setTimeout(()=>onDone(pendingPayment.user),800);
+  const completePayment=async()=>{
+    // Update plan in Supabase
+    try{
+      await fetch("/api/verify-payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,plan:pendingPayment.plan})});
+    }catch(e){}
+    onDone({...pendingPayment.user, plan:pendingPayment.plan});
   };
 
   const skipPayment=()=>{
@@ -375,8 +384,8 @@ function AuthScreen({ onDone, T }) {
                     </button>
                   ):(
                     <>
-                      <div style={{padding:"10px 14px",background:T.accentBg,borderRadius:8,border:`1px solid ${T.accent}44`,fontSize:13,color:T.accent,marginBottom:12,fontFamily:"'JetBrains Mono',monospace"}}>
-                        🔑 Code: <b>{code}</b>
+                      <div style={{padding:"10px 14px",background:T.green+"11",borderRadius:8,border:`1px solid ${T.green}44`,fontSize:13,color:T.green,marginBottom:12}}>
+                        📧 Verification code sent to <b>{email}</b>
                       </div>
                       <input className="input-style" placeholder="Enter verification code" value={codeIn}
                         onChange={e=>setCodeIn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&verify()}
