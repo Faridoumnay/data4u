@@ -1757,13 +1757,71 @@ function ReportPage({ data, user, T }) {
 // ADMIN PANEL
 // ─────────────────────────────────────────────────────────────────────────────
 function AdminPanel({ currentUser, T }) {
-  const [users,setUsers]=useState(()=>Object.values(USERS_DB));
+  const [users,setUsers]=useState([]);
   const [selected,setSelected]=useState(null);
   const [tab,setTab]=useState("users");
-  const refresh=()=>setUsers(Object.values(USERS_DB));
-  const ban=(email)=>{ if(email===ADMIN_EMAIL)return; USERS_DB[email].banned=!USERS_DB[email].banned; refresh(); };
-  const del=(email)=>{ if(email===ADMIN_EMAIL)return; delete USERS_DB[email]; setSelected(null); refresh(); };
-  const plan=(email,p)=>{ USERS_DB[email].plan=p; refresh(); };
+  
+  const refresh=async()=>{
+    try{
+      const r=await fetch("https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?select=*",{
+        headers:{
+          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
+          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl"
+        }
+      });
+      const data=await r.json();
+      setUsers(data);
+    }catch(e){ setUsers(Object.values(USERS_DB)); }
+  };
+
+  useEffect(()=>{ refresh(); },[]);
+  const ban=async(email)=>{
+    if(email===ADMIN_EMAIL)return;
+    const newBanned=!USERS_DB[email].banned;
+    try{
+      await fetch(`https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?email=eq.${encodeURIComponent(email)}`,{
+        method:"PATCH",
+        headers:{
+          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
+          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({banned:newBanned})
+      });
+    }catch(e){}
+    USERS_DB[email].banned=newBanned;
+    refresh();
+  };
+  const del=async(email)=>{
+    if(email===ADMIN_EMAIL)return;
+    try{
+      await fetch(`https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?email=eq.${encodeURIComponent(email)}`,{
+        method:"DELETE",
+        headers:{
+          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
+          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl"
+        }
+      });
+    }catch(e){}
+    delete USERS_DB[email];
+    setSelected(null);
+    refresh();
+  };
+  const plan=async(email,p)=>{
+    try{
+      await fetch(`https://ozzighpcpmfgdspsklgr.supabase.co/rest/v1/users?email=eq.${encodeURIComponent(email)}`,{
+        method:"PATCH",
+        headers:{
+          "apikey":"sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
+          "Authorization":"Bearer sb_publishable_fj_4FcYLZtahsOxDtA00SA_01di6ZXl",
+          "Content-Type":"application/json"
+        },
+        body:JSON.stringify({plan:p})
+      });
+    }catch(e){}
+    USERS_DB[email].plan=p;
+    refresh();
+  };
   const totalUp=users.reduce((s,u)=>s+(u.uploads||0),0);
   const plans=users.reduce((m,u)=>{ m[u.plan]=(m[u.plan]||0)+1; return m; },{});
   const pc={free:T.green,pro:T.accent,enterprise:T.orange};
