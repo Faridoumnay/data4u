@@ -239,21 +239,28 @@ function AuthScreen({ onDone, T }) {
     setErr("");
     setStep(2);setSent(false);setCodeIn("");
   };
+  const [pendingPayment,setPendingPayment]=useState(null);
+
   const finish=()=>{
     if(!name.trim()){setErr("Please enter your name.");return;}
     const r=regUser(email,name,plan);
     if(!r.ok){setErr(r.msg);return;}
     if(plan==="pro"||plan==="enterprise"){
       const prices={pro:"19.00",enterprise:"99.00"};
-      const amount=prices[plan];
-      // Open PayPal payment page directly
-      window.open(`https://www.paypal.com/paypalme/faridoumnay/${amount}`, "_blank");
-      setSuccess(true);
-      setTimeout(()=>onDone(r.user),1500);
+      setPendingPayment({user:r.user, plan, amount:prices[plan]});
     } else {
       setSuccess(true);
       setTimeout(()=>onDone(r.user),1200);
     }
+  };
+
+  const completePayment=()=>{
+    window.open(`https://www.paypal.com/paypalme/faridoumnay/${pendingPayment.amount}`, "_blank");
+    setTimeout(()=>onDone(pendingPayment.user),800);
+  };
+
+  const skipPayment=()=>{
+    onDone(pendingPayment.user);
   };
 
   const plans=[
@@ -284,7 +291,27 @@ function AuthScreen({ onDone, T }) {
       {/* Right panel */}
       <div style={{width:480,display:"flex",alignItems:"center",justifyContent:"center",padding:40}}>
         <div style={{width:"100%",maxWidth:400}} className="fade-up">
-          {success ? (
+          {pendingPayment ? (
+            <div style={{textAlign:"center",padding:32}}>
+              <div style={{fontSize:56,marginBottom:12}}>💳</div>
+              <div style={{fontSize:20,fontWeight:800,color:T.text,marginBottom:8}}>Complete Payment</div>
+              <div style={{fontSize:13,color:T.text2,marginBottom:6}}>
+                Account created! Now complete your <b style={{color:T.accent}}>{pendingPayment.plan}</b> plan payment.
+              </div>
+              <div style={{fontSize:28,fontWeight:800,color:T.accent,marginBottom:20,fontFamily:"'JetBrains Mono',monospace"}}>
+                ${pendingPayment.amount}/mo
+              </div>
+              <button className="btn-primary" onClick={completePayment}
+                style={{width:"100%",padding:"14px 0",borderRadius:12,fontSize:15,marginBottom:10}}>
+                💳 Pay with PayPal
+              </button>
+              <button onClick={skipPayment}
+                style={{width:"100%",padding:"10px 0",borderRadius:12,fontSize:13,background:"transparent",
+                  border:`1px solid ${T.border}`,color:T.text2,cursor:"pointer",fontFamily:"'Syne',sans-serif"}}>
+                Pay later (continue with Free)
+              </button>
+            </div>
+          ) : success ? (
             <div style={{textAlign:"center",padding:40}}>
               <div style={{fontSize:64,marginBottom:16}}>✅</div>
               <div style={{fontSize:20,fontWeight:700,color:T.green}}>Account created!</div>
