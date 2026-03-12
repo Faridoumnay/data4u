@@ -1837,8 +1837,9 @@ function AdminPanel({ currentUser, T }) {
               </div>
             ))}
           </Card>
-          {selected&&USERS_DB[selected]&&(()=>{
-            const u=USERS_DB[selected];
+          {selected&&(()=>{
+            const u=users.find(x=>x.email===selected);
+            if(!u) return null;
             return (
               <Card T={T}>
                 <div style={{...css.flex(0,"row","flex-start","space-between"),marginBottom:16}}>
