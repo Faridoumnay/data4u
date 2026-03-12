@@ -226,6 +226,12 @@ function AuthScreen({ onDone, T }) {
   const sendCode=async()=>{
     if(!email.includes("@")){setErr("Invalid email address.");return;}
     setErr("");setLoading(true);
+    // Check if email exists in Supabase first
+    try{
+      const chk=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+      const chkData=await chk.json();
+      if(chk.ok && chkData.success){setErr("Email already registered. Please sign in.");setLoading(false);return;}
+    }catch(e){}
     const c=Math.random().toString(36).slice(2,8).toUpperCase();
     setCode(c);
     try{
@@ -2147,9 +2153,3 @@ export default function Data4U() {
           {page==="pricing"   &&<PricingPage   user={user} setUser={setUser} T={T}/>}
           </div>
         </>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
