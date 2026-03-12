@@ -259,11 +259,11 @@ function AuthScreen({ onDone, T }) {
   };
 
   const completePayment=async()=>{
-    // Update plan in Supabase
+    // Set plan to "pending" — admin must approve
     try{
-      await fetch("/api/verify-payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,plan:pendingPayment.plan})});
+      await fetch("/api/verify-payment",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,plan:"pending"})});
     }catch(e){}
-    onDone({...pendingPayment.user, plan:pendingPayment.plan});
+    onDone({...pendingPayment.user, plan:"pending"});
   };
 
   const skipPayment=()=>{
@@ -1870,6 +1870,11 @@ function AdminPanel({ currentUser, T }) {
                 )}
                 {!u.isAdmin?(
                   <div style={{...css.flex(8)}}>
+                    {u.plan==="pending"&&(
+                      <button onClick={()=>plan(u.email,"pro")} style={{flex:1,padding:"10px 0",borderRadius:9,border:`1px solid ${T.green}`,background:T.green+"11",color:T.green,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13}}>
+                        ✅ Approve
+                      </button>
+                    )}
                     <button onClick={()=>ban(u.email)} style={{flex:1,padding:"10px 0",borderRadius:9,border:`1px solid ${u.banned?T.green:T.red}`,background:u.banned?T.green+"11":T.red+"11",color:u.banned?T.green:T.red,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:600,fontSize:13}}>
                       {u.banned?"✅ Unban":"⛔ Ban"}
                     </button>
@@ -2107,6 +2112,27 @@ export default function Data4U() {
         <AuthScreen onDone={handleLogin} T={T}/>
       ):(
         <>
+          {user.plan==="pending" ? (
+            <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Syne',sans-serif"}}>
+              <div style={{textAlign:"center",padding:40,maxWidth:480}}>
+                <div style={{fontSize:64,marginBottom:16}}>⏳</div>
+                <div style={{fontSize:24,fontWeight:800,color:T.text,marginBottom:12}}>Payment Under Review</div>
+                <div style={{fontSize:14,color:T.text2,lineHeight:1.8,marginBottom:24}}>
+                  Your payment is being verified by our team.<br/>
+                  You will get access once approved.<br/>
+                  <span style={{color:T.accent}}>Usually within a few hours.</span>
+                </div>
+                <div style={{padding:"16px 20px",background:T.card,border:`1px solid ${T.border}`,borderRadius:12,fontSize:13,color:T.text3,marginBottom:24}}>
+                  📧 Logged in as: <b style={{color:T.text}}>{user.email}</b>
+                </div>
+                <button onClick={()=>setUser(null)}
+                  style={{padding:"12px 32px",borderRadius:12,border:`1px solid ${T.border}`,background:"transparent",color:T.text2,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontSize:13}}>
+                  ← Back to Login
+                </button>
+              </div>
+            </div>
+          ) : (
+          <>
           <NavBar user={user} page={page} setPage={setPage} dark={dark} setDark={setDark} data={data} T={T}/>
           <div className="fade-up">
             {page==="home"      &&<HomePage     user={user} setPage={setPage} data={data} T={T}/>}
@@ -2119,6 +2145,8 @@ export default function Data4U() {
             {page==="admin"     &&<AdminPanel   currentUser={user} T={T}/>}
           {page==="pricing"   &&<PricingPage   user={user} setUser={setUser} T={T}/>}
           </div>
+        </>
+          )}
         </>
       )}
     </div>
