@@ -1826,7 +1826,7 @@ function AdminPanel({ currentUser, T }) {
                   background:selected===u.email?T.accentBg:T.bg3,opacity:u.banned?.6:1,transition:"all .15s"}}>
                 <div style={{...css.flex(10)}}>
                   <div style={{width:34,height:34,borderRadius:"50%",background:`linear-gradient(135deg,${T.accent}44,${T.purple}44)`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15}}>
-                    {u.isAdmin?"🛡":u.banned?"⛔":"👤"}
+                    {(u.isAdmin||u.is_admin)?"🛡":u.banned?"⛔":"👤"}
                   </div>
                   <div><div style={{fontSize:13,fontWeight:600,color:T.text}}>{u.name}</div><div style={{fontSize:11,color:T.text3}}>{u.email}</div></div>
                 </div>
@@ -1846,7 +1846,7 @@ function AdminPanel({ currentUser, T }) {
                   <div><div style={{fontSize:18,fontWeight:700,color:T.text}}>{u.name}</div><div style={{fontSize:12,color:T.text2}}>{u.email}</div><div style={{fontSize:11,color:T.text3}}>Joined: {u.joinedAt?.slice(0,10)}</div></div>
                   <button onClick={()=>setSelected(null)} style={{background:"transparent",border:"none",color:T.text2,cursor:"pointer",fontSize:20}}>×</button>
                 </div>
-                {!u.isAdmin&&(
+                {!(u.isAdmin||u.is_admin)&&(
                   <>
                     <div style={{fontSize:12,color:T.text2,marginBottom:8,fontWeight:600}}>Change Plan:</div>
                     <div style={{...css.flex(8),marginBottom:16}}>
@@ -1869,7 +1869,7 @@ function AdminPanel({ currentUser, T }) {
                     ))}
                   </div>
                 )}
-                {!u.isAdmin?(
+                {!(u.isAdmin||u.is_admin)?(
                   <div style={{...css.flex(8)}}>
                     {u.plan==="pending"&&(
                       <button onClick={()=>plan(u.email,"pro")} style={{flex:1,padding:"10px 0",borderRadius:9,border:`1px solid ${T.green}`,background:T.green+"11",color:T.green,cursor:"pointer",fontFamily:"'Syne',sans-serif",fontWeight:700,fontSize:13}}>
@@ -1922,7 +1922,7 @@ function AdminPanel({ currentUser, T }) {
         <div style={{...css.grid(3,16)}}>
           {[
             {title:"Plan Distribution",items:Object.entries(plans).map(([p,n])=>({label:p,val:n,pct:Math.round(n/users.length*100),color:pc[p]||T.accent}))},
-            {title:"Account Status",items:[{label:"Active",val:users.filter(u=>!u.banned).length,pct:Math.round(users.filter(u=>!u.banned).length/users.length*100),color:T.green},{label:"Banned",val:users.filter(u=>u.banned).length,pct:Math.round(users.filter(u=>u.banned).length/users.length*100),color:T.red},{label:"Admins",val:users.filter(u=>u.isAdmin).length,pct:Math.round(users.filter(u=>u.isAdmin).length/users.length*100),color:T.accent}]},
+            {title:"Account Status",items:[{label:"Active",val:users.filter(u=>!u.banned).length,pct:Math.round(users.filter(u=>!u.banned).length/users.length*100),color:T.green},{label:"Banned",val:users.filter(u=>u.banned).length,pct:Math.round(users.filter(u=>u.banned).length/users.length*100),color:T.red},{label:"Admins",val:users.filter(u=>(u.isAdmin||u.is_admin)).length,pct:Math.round(users.filter(u=>(u.isAdmin||u.is_admin)).length/users.length*100),color:T.accent}]},
             {title:"Upload Stats",items:[{label:"Total Uploads",val:totalUp,color:T.accent},{label:"Avg per User",val:(totalUp/users.length).toFixed(1),color:T.purple},{label:"Most Active",val:[...users].sort((a,b)=>(b.uploads||0)-(a.uploads||0))[0]?.name||"—",color:T.green}]},
           ].map(({title,items},gi)=>(
             <Card key={gi} T={T}>
