@@ -1226,13 +1226,18 @@ function CleanPage({ data, setData, T }) {
                 const ymin=Math.min(...ys),ymax=Math.max(...ys);
                 const px=v=>pad+(v-xmin)/(xmax-xmin||1)*(W-2*pad);
                 const py=v=>H-pad-(v-ymin)/(ymax-ymin||1)*(H-2*pad);
+                // Build outlier index set from outlierRows
+                const outlierSet=new Set(outlierResults.outlierRows.map((_,i)=>i));
+                const redetect=detectOutliers(d,outlierResults.method);
                 return (
                   <div style={{marginBottom:16}}>
                     <div style={{fontSize:12,color:T.text2,marginBottom:6}}>📍 Scatter: <b>{cx}</b> vs <b>{cy}</b> — <span style={{color:T.red}}>● outliers</span> <span style={{color:T.accent}}>● normal</span></div>
                     <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{background:T.bg3,borderRadius:8}}>
                       {d.map((row,i)=>{
-                        const isOut=outlierResults.idxSet.has(i);
-                        return <circle key={i} cx={px(+row[cx])} cy={py(+row[cy])} r={isOut?4:2.5}
+                        const isOut=redetect.has(i);
+                        const x=px(+row[cx]), y=py(+row[cy]);
+                        if(isNaN(x)||isNaN(y)) return null;
+                        return <circle key={i} cx={x} cy={y} r={isOut?4:2.5}
                           fill={isOut?T.red:T.accent} opacity={isOut?0.9:0.4}/>;
                       })}
                     </svg>
@@ -2294,3 +2299,9 @@ export default function Data4U() {
           {page==="pricing"   &&<PricingPage   user={user} setUser={setUser} T={T}/>}
           </div>
         </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
