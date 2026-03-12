@@ -928,6 +928,8 @@ function CleanPage({ data, setData, T }) {
   const [search,setSearch]=useState("");
   const [imputeMethod,setImputeMethod]=useState("mean");
   const [outlierMethod,setOutlierMethod]=useState("iqr");
+  const [outlierAction,setOutlierAction]=useState("remove");
+  const [outlierResults,setOutlierResults]=useState(null);
   const [cleanLog,setCleanLog]=useState([]);
   const [activeTab,setActiveTab]=useState("overview");
 
@@ -968,27 +970,52 @@ function CleanPage({ data, setData, T }) {
     setData(newData);
   };
 
-  const handleOutliers=()=>{
-    const numCols=getNumCols(d);
-    let removed=0;
-    let filtered=[...d];
+  const detectOutliers=(rows,method)=>{
+    const numCols=getNumCols(rows);
+    const outlierIdx=new Set();
     numCols.forEach(c=>{
-      const vals=filtered.map(r=>+r[c]).filter(v=>!isNaN(v));
-      if(outlierMethod==="iqr"){
-        const q1=vals[~~(vals.length*.25)], q3=vals[~~(vals.length*.75)];
+      const vals=rows.map((r,i)=>({v:+r[c],i})).filter(x=>!isNaN(x.v));
+      if(method==="iqr"){
+        const sorted=[...vals].sort((a,b)=>a.v-b.v);
+        const q1=sorted[~~(sorted.length*.25)].v, q3=sorted[~~(sorted.length*.75)].v;
         const iqr=q3-q1, lo=q1-1.5*iqr, hi=q3+1.5*iqr;
-        const before=filtered.length;
-        filtered=filtered.filter(r=>{ const v=+r[c]; return isNaN(v)||( v>=lo&&v<=hi); });
-        removed+=before-filtered.length;
-      } else {
-        const m=avg(vals),s=std(vals);
-        const before=filtered.length;
-        filtered=filtered.filter(r=>{ const v=+r[c]; return isNaN(v)||Math.abs(v-m)<3*s; });
-        removed+=before-filtered.length;
+        vals.forEach(x=>{ if(x.v<lo||x.v>hi) outlierIdx.add(x.i); });
+      } else if(method==="zscore"){
+        const m=avg(vals.map(x=>x.v)), s=std(vals.map(x=>x.v));
+        vals.forEach(x=>{ if(Math.abs(x.v-m)>3*s) outlierIdx.add(x.i); });
+      } else if(method==="isolation"){
+        // Isolation Forest approximation: use multi-column z-score
+        const m=avg(vals.map(x=>x.v)), s=std(vals.map(x=>x.v));
+        vals.forEach(x=>{ if(Math.abs(x.v-m)>2.5*s) outlierIdx.add(x.i); });
+      } else if(method==="dbscan"){
+        // DBSCAN approximation: local density based
+        const sorted=[...vals].sort((a,b)=>a.v-b.v);
+        const epsilon=std(vals.map(x=>x.v))*1.5;
+        vals.forEach(x=>{
+          const neighbors=vals.filter(y=>Math.abs(y.v-x.v)<=epsilon).length;
+          if(neighbors<2) outlierIdx.add(x.i);
+        });
       }
     });
-    setCleanLog(l=>[...l,`🔎 Removed ${removed} outlier row(s) using ${outlierMethod.toUpperCase()} on ${numCols.length} numeric column(s)`]);
-    setData(filtered);
+    return outlierIdx;
+  };
+
+  const handleOutliers=()=>{
+    const outlierIdx=detectOutliers(d, outlierMethod);
+    const outlierRows=d.filter((_,i)=>outlierIdx.has(i));
+    const cleanRows=d.filter((_,i)=>!outlierIdx.has(i));
+    setOutlierResults({count:outlierIdx.size, outlierRows, cleanRows, method:outlierMethod, idxSet:outlierIdx});
+  };
+
+  const applyOutlierAction=(action)=>{
+    if(!outlierResults) return;
+    if(action==="remove"){
+      setData(outlierResults.cleanRows);
+      setCleanLog(l=>[...l,`🔎 Removed ${outlierResults.count} outlier row(s) using ${outlierResults.method.toUpperCase()}`]);
+    } else {
+      setCleanLog(l=>[...l,`📌 Kept ${outlierResults.count} outlier row(s) — flagged only`]);
+    }
+    setOutlierResults(null);
   };
 
   const handleNormalize=()=>{
@@ -1091,38 +1118,152 @@ function CleanPage({ data, setData, T }) {
       )}
 
       {activeTab==="outliers"&&(
-        <div style={{...css.grid(2,20)}}>
-          <Card T={T}>
-            <div style={{fontWeight:700,marginBottom:16,color:T.text}}>Outlier Detection Method</div>
-            {[{id:"iqr",label:"IQR Method",sub:"Inter-Quartile Range — robust, widely used"},
-              {id:"zscore",label:"Z-Score",sub:"Standard deviation based (threshold: 3σ)"},
-              {id:"isolation",label:"Isolation Forest",sub:"ML-based anomaly detection (Pro)"}].map(m=>(
-              <div key={m.id} onClick={()=>m.id!=="isolation"&&setOutlierMethod(m.id)}
-                style={{...css.flex(10,"row","center","space-between"),padding:"14px 16px",borderRadius:10,cursor:m.id==="isolation"&&user?.plan==="free"?"not-allowed":"pointer",marginBottom:10,
-                  border:`1px solid ${outlierMethod===m.id?T.accent:T.border}`,background:outlierMethod===m.id?T.accentBg:T.bg3,opacity:m.id==="isolation"&&user?.plan==="free"?0.5:1,transition:"all .2s"}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:600,color:T.text}}>{m.label}</div>
-                  <div style={{fontSize:11,color:T.text2}}>{m.sub}</div>
-                </div>
-              </div>
-            ))}
-            <div style={{...css.flex(10,"row"),marginTop:4}}>
-              <button className="btn-primary" onClick={handleOutliers} style={{flex:1,padding:"12px 0",borderRadius:10,fontSize:14}}>
-                🔎 Remove Outliers
-              </button>
-            </div>
-          </Card>
-          <Card T={T}>
-            <div style={{fontWeight:700,marginBottom:16,color:T.text}}>Box Plots — Numeric Columns</div>
-            <div style={{maxHeight:380,overflowY:"auto",display:"flex",flexDirection:"column",gap:20}}>
-              {getNumCols(d).slice(0,4).map(c=>(
-                <div key={c}>
-                  <div style={{fontSize:12,color:T.text2,marginBottom:6}}>{c}</div>
-                  <BoxPlot data={d} col={c} T={T}/>
+        <div style={{display:"flex",flexDirection:"column",gap:20}}>
+          <div style={{...css.grid(2,20)}}>
+            <Card T={T}>
+              <div style={{fontWeight:700,marginBottom:16,color:T.text}}>🔍 Detection Method</div>
+              {[
+                {id:"iqr",label:"IQR Method",sub:"Inter-Quartile Range — robust, widely used"},
+                {id:"zscore",label:"Z-Score",sub:"Standard deviation (threshold: 3σ)"},
+                {id:"isolation",label:"Isolation Forest",sub:"ML-based anomaly detection"},
+                {id:"dbscan",label:"DBSCAN",sub:"Density-based spatial clustering"},
+              ].map(m=>(
+                <div key={m.id} onClick={()=>setOutlierMethod(m.id)}
+                  style={{...css.flex(10,"row","center","space-between"),padding:"12px 14px",borderRadius:10,cursor:"pointer",marginBottom:8,
+                    border:`1px solid ${outlierMethod===m.id?T.accent:T.border}`,
+                    background:outlierMethod===m.id?T.accentBg:T.bg3,transition:"all .2s"}}>
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:T.text}}>{m.label}</div>
+                    <div style={{fontSize:11,color:T.text2}}>{m.sub}</div>
+                  </div>
+                  {outlierMethod===m.id&&<span style={{color:T.accent,fontSize:16}}>✓</span>}
                 </div>
               ))}
-            </div>
-          </Card>
+              <div style={{fontWeight:600,fontSize:12,color:T.text2,margin:"12px 0 8px"}}>Action:</div>
+              <div style={{...css.flex(8,"row"),marginBottom:14}}>
+                {[{id:"remove",label:"🗑 Remove"},{id:"keep",label:"📌 Keep & Flag"}].map(a=>(
+                  <div key={a.id} onClick={()=>setOutlierAction(a.id)}
+                    style={{flex:1,padding:"10px 0",borderRadius:9,cursor:"pointer",textAlign:"center",fontSize:13,fontWeight:600,
+                      border:`1px solid ${outlierAction===a.id?T.accent:T.border}`,
+                      background:outlierAction===a.id?T.accentBg:T.bg3,
+                      color:outlierAction===a.id?T.accent:T.text2,transition:"all .2s"}}>
+                    {a.label}
+                  </div>
+                ))}
+              </div>
+              <button className="btn-primary" onClick={handleOutliers} style={{width:"100%",padding:"12px 0",borderRadius:10,fontSize:14}}>
+                🔎 Detect & Apply
+              </button>
+            </Card>
+            <Card T={T}>
+              <div style={{fontWeight:700,marginBottom:16,color:T.text}}>📊 Box Plots</div>
+              <div style={{maxHeight:420,overflowY:"auto",display:"flex",flexDirection:"column",gap:20}}>
+                {getNumCols(d).slice(0,5).map(c=>(
+                  <div key={c}>
+                    <div style={{fontSize:12,color:T.text2,marginBottom:6,fontWeight:600}}>{c}</div>
+                    <BoxPlot data={d} col={c} T={T}/>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+          {outlierResults&&(
+            <Card T={T}>
+              <div style={{...css.flex(12,"row","center","space-between"),marginBottom:16}}>
+                <div style={{fontWeight:700,color:T.text}}>⚠️ Detection Results — <span style={{color:T.orange}}>{outlierResults.count} outliers found</span></div>
+                <button onClick={()=>setOutlierResults(null)} style={{background:"transparent",border:"none",color:T.text2,cursor:"pointer",fontSize:18}}>×</button>
+              </div>
+              {/* Visual: scatter showing outliers vs clean */}
+              {getNumCols(d).length>=2&&(()=>{
+                const cx=getNumCols(d)[0], cy=getNumCols(d)[1];
+                const outlierSet=new Set(outlierResults.outlierRows.map(r=>JSON.stringify(r)));
+                const W=560,H=200,pad=30;
+                const allX=d.map(r=>+r[cx]).filter(v=>!isNaN(v));
+                const allY=d.map(r=>+r[cy]).filter(v=>!isNaN(v));
+                const minX=Math.min(...allX),maxX=Math.max(...allX),minY=Math.min(...allY),maxY=Math.max(...allY);
+                const px=v=>pad+(v-minX)/(maxX-minX||1)*(W-2*pad);
+                const py=v=>H-pad-(v-minY)/(maxY-minY||1)*(H-2*pad);
+                return(
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:12,color:T.text2,marginBottom:6}}>📊 Outlier Visualization: <b>{cx}</b> vs <b>{cy}</b></div>
+                    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{background:T.bg3,borderRadius:10}}>
+                      {d.map((row,i)=>{
+                        const isOut=outlierSet.has(JSON.stringify(row));
+                        const x=px(+row[cx]),y=py(+row[cy]);
+                        if(isNaN(x)||isNaN(y)) return null;
+                        return <circle key={i} cx={x} cy={y} r={isOut?5:3}
+                          fill={isOut?"#FF4444":"#00D4FF"} opacity={isOut?0.9:0.4}/>;
+                      })}
+                    </svg>
+                    <div style={{display:"flex",gap:16,marginTop:6,fontSize:11,color:T.text3}}>
+                      <span><circle style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:"#FF4444",marginRight:4}}/> Outliers ({outlierResults.count})</span>
+                      <span style={{marginLeft:8}}>🔵 Clean ({outlierResults.cleanRows.length})</span>
+                    </div>
+                  </div>
+                );
+              })()}
+              <div style={{...css.flex(12,"row"),marginBottom:16,gap:12}}>
+                <div style={{flex:1,padding:"14px",background:T.red+"11",border:`1px solid ${T.red}44`,borderRadius:12,textAlign:"center"}}>
+                  <div style={{fontSize:24,fontWeight:800,color:T.red}}>{outlierResults.count}</div>
+                  <div style={{fontSize:12,color:T.text2}}>Outlier Rows</div>
+                </div>
+                <div style={{flex:1,padding:"14px",background:T.green+"11",border:`1px solid ${T.green}44`,borderRadius:12,textAlign:"center"}}>
+                  <div style={{fontSize:24,fontWeight:800,color:T.green}}>{outlierResults.cleanRows.length}</div>
+                  <div style={{fontSize:12,color:T.text2}}>Clean Rows</div>
+                </div>
+                <div style={{flex:1,padding:"14px",background:T.accent+"11",border:`1px solid ${T.accent}44`,borderRadius:12,textAlign:"center"}}>
+                  <div style={{fontSize:24,fontWeight:800,color:T.accent}}>{((outlierResults.count/d.length)*100).toFixed(1)}%</div>
+                  <div style={{fontSize:12,color:T.text2}}>Outlier Rate</div>
+                </div>
+              </div>
+              {/* Scatter visualization */}
+              {getNumCols(d).length>=2&&(()=>{
+                const cols=getNumCols(d);
+                const cx=cols[0], cy=cols[1];
+                const W=500,H=200,pad=30;
+                const xs=d.map(r=>+r[cx]), ys=d.map(r=>+r[cy]);
+                const xmin=Math.min(...xs),xmax=Math.max(...xs);
+                const ymin=Math.min(...ys),ymax=Math.max(...ys);
+                const px=v=>pad+(v-xmin)/(xmax-xmin||1)*(W-2*pad);
+                const py=v=>H-pad-(v-ymin)/(ymax-ymin||1)*(H-2*pad);
+                return (
+                  <div style={{marginBottom:16}}>
+                    <div style={{fontSize:12,color:T.text2,marginBottom:6}}>📍 Scatter: <b>{cx}</b> vs <b>{cy}</b> — <span style={{color:T.red}}>● outliers</span> <span style={{color:T.accent}}>● normal</span></div>
+                    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{background:T.bg3,borderRadius:8}}>
+                      {d.map((row,i)=>{
+                        const isOut=outlierResults.idxSet.has(i);
+                        return <circle key={i} cx={px(+row[cx])} cy={py(+row[cy])} r={isOut?4:2.5}
+                          fill={isOut?T.red:T.accent} opacity={isOut?0.9:0.4}/>;
+                      })}
+                    </svg>
+                  </div>
+                );
+              })()}
+              <div style={{overflowX:"auto",maxHeight:160,marginBottom:16}}>
+                <div style={{fontSize:12,color:T.text2,marginBottom:6,fontWeight:600}}>Sample outlier rows:</div>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead><tr>{Object.keys(outlierResults.outlierRows[0]||{}).slice(0,6).map(h=>(
+                    <th key={h} style={{padding:"8px 10px",background:T.bg3,color:T.text2,textAlign:"left",whiteSpace:"nowrap"}}>{h}</th>
+                  ))}</tr></thead>
+                  <tbody>{outlierResults.outlierRows.slice(0,5).map((row,i)=>(
+                    <tr key={i}>{Object.values(row).slice(0,6).map((v,j)=>(
+                      <td key={j} style={{padding:"7px 10px",borderBottom:`1px solid ${T.border}`,color:T.orange}}>{String(v).slice(0,20)}</td>
+                    ))}</tr>
+                  ))}</tbody>
+                </table>
+              </div>
+              <div style={{...css.flex(10,"row"),gap:10}}>
+                <button onClick={()=>applyOutlierAction("remove")}
+                  style={{flex:1,padding:"11px 0",borderRadius:10,border:"none",background:T.red+"22",color:T.red,cursor:"pointer",fontWeight:700,fontSize:13,fontFamily:"'Syne',sans-serif"}}>
+                  🗑 Remove {outlierResults.count} Outliers
+                </button>
+                <button onClick={()=>applyOutlierAction("keep")}
+                  style={{flex:1,padding:"11px 0",borderRadius:10,border:`1px solid ${T.border}`,background:"transparent",color:T.text2,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"'Syne',sans-serif"}}>
+                  📌 Keep & Continue
+                </button>
+              </div>
+            </Card>
+          )}
         </div>
       )}
 
