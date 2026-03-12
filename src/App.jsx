@@ -1196,7 +1196,7 @@ function CleanPage({ data, setData, T }) {
                       })}
                     </svg>
                     <div style={{display:"flex",gap:16,marginTop:6,fontSize:11,color:T.text3}}>
-                      <span><circle style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:"#FF4444",marginRight:4}}/> Outliers ({outlierResults.count})</span>
+                      <span><span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:"#FF4444",marginRight:4}}/> Outliers ({outlierResults.count})</span>
                       <span style={{marginLeft:8}}>🔵 Clean ({outlierResults.cleanRows.length})</span>
                     </div>
                   </div>
@@ -1216,34 +1216,7 @@ function CleanPage({ data, setData, T }) {
                   <div style={{fontSize:12,color:T.text2}}>Outlier Rate</div>
                 </div>
               </div>
-              {/* Scatter visualization */}
-              {getNumCols(d).length>=2&&(()=>{
-                const cols=getNumCols(d);
-                const cx=cols[0], cy=cols[1];
-                const W=500,H=200,pad=30;
-                const xs=d.map(r=>+r[cx]), ys=d.map(r=>+r[cy]);
-                const xmin=Math.min(...xs),xmax=Math.max(...xs);
-                const ymin=Math.min(...ys),ymax=Math.max(...ys);
-                const px=v=>pad+(v-xmin)/(xmax-xmin||1)*(W-2*pad);
-                const py=v=>H-pad-(v-ymin)/(ymax-ymin||1)*(H-2*pad);
-                // Build outlier index set from outlierRows
-                const outlierSet=new Set(outlierResults.outlierRows.map((_,i)=>i));
-                const redetect=detectOutliers(d,outlierResults.method);
-                return (
-                  <div style={{marginBottom:16}}>
-                    <div style={{fontSize:12,color:T.text2,marginBottom:6}}>📍 Scatter: <b>{cx}</b> vs <b>{cy}</b> — <span style={{color:T.red}}>● outliers</span> <span style={{color:T.accent}}>● normal</span></div>
-                    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{background:T.bg3,borderRadius:8}}>
-                      {d.map((row,i)=>{
-                        const isOut=redetect.has(i);
-                        const x=px(+row[cx]), y=py(+row[cy]);
-                        if(isNaN(x)||isNaN(y)) return null;
-                        return <circle key={i} cx={x} cy={y} r={isOut?4:2.5}
-                          fill={isOut?T.red:T.accent} opacity={isOut?0.9:0.4}/>;
-                      })}
-                    </svg>
-                  </div>
-                );
-              })()}
+
               <div style={{overflowX:"auto",maxHeight:160,marginBottom:16}}>
                 <div style={{fontSize:12,color:T.text2,marginBottom:6,fontWeight:600}}>Sample outlier rows:</div>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
