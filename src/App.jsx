@@ -1250,9 +1250,24 @@ function CleanPage({ data, setData, T }) {
           <Card T={T}>
             <div style={{fontWeight:700,marginBottom:16,color:T.text}}>Transformations</div>
             {[{label:"Min-Max Normalization",sub:"Scale to [0,1] range",fn:handleNormalize,badge:"Common"},
-              {label:"Standardization (Z-score)",sub:"Mean=0, Std=1",fn:()=>setCleanLog(l=>[...l,"📐 Standardization applied (simulated)"]),badge:"ML Best Practice"},
-              {label:"One-Hot Encoding",sub:"Convert categorical → binary columns",fn:()=>setCleanLog(l=>[...l,"🔢 One-Hot Encoding applied (simulated)"])},
-              {label:"Extract Date Features",sub:"Year, Month, Day from date columns",fn:()=>setCleanLog(l=>[...l,"📅 Date features extracted (simulated)"])},
+              {label:"Standardization (Z-score)",sub:"Mean=0, Std=1",badge:"ML Best Practice",fn:()=>{
+                const numCols=getNumCols(d);
+                const newData=d.map(row=>{const nr={...row};numCols.forEach(c=>{const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));const m=avg(vals),s=std(vals)||1;nr[c]=+(((+row[c])-m)/s).toFixed(4);});return nr;});
+                setData(newData);setCleanLog(l=>[...l,"📐 Standardized "+numCols.length+" numeric column(s) — Mean=0, Std=1"]);
+              }},
+              {label:"One-Hot Encoding",sub:"Convert categorical → binary columns",fn:()=>{
+                const catCols=getCatCols(d);
+                if(!catCols.length){setCleanLog(l=>[...l,"⚠️ No categorical columns found"]);return;}
+                let newData=[...d];
+                catCols.forEach(c=>{const uniq=[...new Set(d.map(r=>r[c]))].filter(Boolean);newData=newData.map(row=>{const nr={...row};uniq.forEach(v=>{nr[c+"_"+v]=row[c]===v?1:0;});delete nr[c];return nr;});});
+                setData(newData);setCleanLog(l=>[...l,"🔢 One-Hot Encoded "+catCols.length+" categorical column(s)"]);
+              }},
+              {label:"Extract Date Features",sub:"Year, Month, Day from date columns",fn:()=>{
+                const dateCols=getDateCols(d);
+                if(!dateCols.length){setCleanLog(l=>[...l,"⚠️ No date columns found"]);return;}
+                const newData=d.map(row=>{const nr={...row};dateCols.forEach(c=>{const dt=new Date(row[c]);if(!isNaN(dt)){nr[c+"_year"]=dt.getFullYear();nr[c+"_month"]=dt.getMonth()+1;nr[c+"_day"]=dt.getDate();}});return nr;});
+                setData(newData);setCleanLog(l=>[...l,"📅 Extracted Year/Month/Day from "+dateCols.length+" date column(s)"]);
+              }},
             ].map((t,i)=>(
               <div key={i} style={{...css.flex(12,"row","center","space-between"),padding:"14px 16px",background:T.bg3,borderRadius:10,border:`1px solid ${T.border}`,marginBottom:10}}>
                 <div>
@@ -2263,18 +2278,3 @@ export default function Data4U() {
           <div className="fade-up">
             {page==="home"      &&<HomePage     user={user} setPage={setPage} data={data} T={T}/>}
             {page==="upload"    &&<UploadPage   user={user} setData={setData} setPage={setPage} T={T}/>}
-            {page==="clean"     &&<CleanPage    data={data} setData={setData} T={T}/>}
-            {page==="visualize" &&<VisualizePage data={data} T={T}/>}
-            {page==="predict"   &&<PredictPage  data={data} T={T}/>}
-            {page==="dashboard" &&<DashboardPage data={data} T={T}/>}
-            {page==="report"    &&<ReportPage   data={data} user={user} T={T}/>}
-            {page==="admin"     &&<AdminPanel   currentUser={user} T={T}/>}
-          {page==="pricing"   &&<PricingPage   user={user} setUser={setUser} T={T}/>}
-          </div>
-        </>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
