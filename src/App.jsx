@@ -1625,7 +1625,7 @@ function PredictPage({ data, T }) {
               <span>Test: {Math.round(d.length*.2)} rows</span>
               <span>80/20 split</span>
             </div>
-            <button className="btn-primary" onClick={runModel} disabled={running||target===feature}
+            <button className="btn-primary" onClick={runModel} disabled={running||features.length===0}
               style={{width:"100%",padding:"13px 0",borderRadius:10,fontSize:14,...css.flex(8,"row","center","center")}}>
               {running?<><Loader T={T}/> <span style={{marginLeft:8}}>Training...</span></>:"▶ Run Model"}
             </button>
@@ -1638,7 +1638,7 @@ function PredictPage({ data, T }) {
             <Card T={T} style={{padding:40,textAlign:"center"}}>
               <div style={{fontSize:48,marginBottom:12}}>◎</div>
               <div style={{fontWeight:700,fontSize:16,color:T.text,marginBottom:6}}>Configure & Run a Model</div>
-              <div style={{fontSize:13,color:T.text2}}>Select target variable, feature, and model type to begin.</div>
+              <div style={{fontSize:13,color:T.text2}}>Select target variable, feature variables, and model type to begin.</div>
             </Card>
           )}
           {running&&(
