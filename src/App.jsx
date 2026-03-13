@@ -548,22 +548,31 @@ function Loader({ T }) {
 // ─────────────────────────────────────────────────────────────────────────────
 function BarChart({ data, xKey, yKey, T, height=200, color }) {
   if (!data || !data.length) return null;
+  const [tooltip,setTooltip]=useState(null);
   const vals = data.map(d=>+d[yKey]||0);
   const maxV = Math.max(...vals,1);
-  const w = 100/data.length;
   return (
-    <div style={{overflowX:"auto"}}>
+    <div style={{overflowX:"auto",position:"relative"}}>
+      {tooltip&&(
+        <div style={{position:"fixed",background:T.card,border:`1px solid ${T.accent}`,borderRadius:8,padding:"6px 12px",fontSize:12,color:T.text,pointerEvents:"none",zIndex:999,boxShadow:"0 4px 16px #0008",left:tooltip.x+12,top:tooltip.y-30}}>
+          <b style={{color:T.accent}}>{tooltip.label}</b>: {tooltip.val}
+        </div>
+      )}
       <div style={{display:"flex",alignItems:"flex-end",gap:3,height,minWidth:Math.max(data.length*36,300),paddingBottom:24,position:"relative"}}>
         {data.map((d,i)=>{
           const h = Math.max((vals[i]/maxV)*(height-30),2);
+          const c = color||T.chartBars[i%T.chartBars.length];
           return (
             <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",minWidth:28}}>
               <div style={{fontSize:9,color:T.text2,marginBottom:3,fontFamily:"'JetBrains Mono',monospace"}}>{vals[i]>999?(vals[i]/1000).toFixed(1)+"k":vals[i]}</div>
-              <div title={`${d[xKey]}: ${vals[i]}`}
-                style={{width:"100%",height:h,background:color||T.chartBars[i%T.chartBars.length],borderRadius:"3px 3px 0 0",transition:"height .3s",cursor:"pointer",opacity:.85}}
-                onMouseEnter={e=>e.currentTarget.style.opacity="1"}
-                onMouseLeave={e=>e.currentTarget.style.opacity=".85"} />
-              <div style={{fontSize:8,color:T.text3,marginTop:4,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%",width:"100%"}}>{String(d[xKey]).slice(0,8)}</div>
+              <div
+                style={{width:"100%",height:h,background:c,borderRadius:"4px 4px 0 0",cursor:"pointer",opacity:.85,
+                  transition:"all .2s",boxShadow:tooltip?.i===i?`0 0 12px ${c}88`:""}}
+                onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.transform="scaleY(1.03)";setTooltip({label:d[xKey],val:vals[i],x:e.clientX,y:e.clientY,i});}}
+                onMouseLeave={e=>{e.currentTarget.style.opacity=".85";e.currentTarget.style.transform="";setTooltip(null);}}
+                onMouseMove={e=>setTooltip(t=>t?{...t,x:e.clientX,y:e.clientY}:null)}
+              />
+              <div style={{fontSize:8,color:T.text3,marginTop:4,textAlign:"center",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{String(d[xKey]).slice(0,8)}</div>
             </div>
           );
         })}
@@ -575,19 +584,28 @@ function BarChart({ data, xKey, yKey, T, height=200, color }) {
 // LINE CHART (SVG)
 function LineChart({ data, xKey, yKey, T, height=180, color }) {
   if (!data||data.length<2) return null;
+  const [hov,setHov]=useState(null);
   const vals = data.map(d=>+d[yKey]||0);
+  const xvals = data.map(d=>d[xKey]);
   const minV = Math.min(...vals), maxV = Math.max(...vals,1);
-  const W=600, H=height;
+  const W=600, H=height, pad=16;
   const pts = vals.map((v,i)=>[
     (i/(vals.length-1))*W,
-    H-16 - ((v-minV)/(maxV-minV||1))*(H-32)
+    H-pad - ((v-minV)/(maxV-minV||1))*(H-pad*2)
   ]);
   const path = pts.map((p,i)=>i===0?`M${p[0]},${p[1]}`:`L${p[0]},${p[1]}`).join(" ");
-  const fill = pts.map((p,i)=>i===0?`M${p[0]},${H-16}`:`L${p[0]},${p[1]}`).join(" ")+` L${pts[pts.length-1][0]},${H-16} Z`;
+  const fill = pts.map((p,i)=>i===0?`M${p[0]},${H-pad}`:`L${p[0]},${p[1]}`).join(" ")+` L${pts[pts.length-1][0]},${H-pad} Z`;
   const c = color||T.accent;
   return (
-    <div style={{overflowX:"auto"}}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height}} preserveAspectRatio="none">
+    <div style={{overflowX:"auto",position:"relative"}}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height}} preserveAspectRatio="none"
+        onMouseLeave={()=>setHov(null)}
+        onMouseMove={e=>{
+          const rect=e.currentTarget.getBoundingClientRect();
+          const xRatio=(e.clientX-rect.left)/rect.width;
+          const idx=Math.round(xRatio*(vals.length-1));
+          if(idx>=0&&idx<vals.length) setHov({idx,x:pts[idx][0],y:pts[idx][1],val:vals[idx],label:xvals[idx]});
+        }}>
         <defs>
           <linearGradient id={`lg-${yKey}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={c} stopOpacity=".3"/>
@@ -596,9 +614,17 @@ function LineChart({ data, xKey, yKey, T, height=180, color }) {
         </defs>
         <path d={fill} fill={`url(#lg-${yKey})`}/>
         <path d={path} fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        {hov&&<line x1={hov.x} y1={pad} x2={hov.x} y2={H-pad} stroke={c} strokeWidth="1" strokeDasharray="4,3" opacity=".6"/>}
         {pts.filter((_,i)=>i%Math.ceil(pts.length/8)===0).map((p,i)=>(
           <circle key={i} cx={p[0]} cy={p[1]} r="4" fill={c} stroke={T.bg2} strokeWidth="2"/>
         ))}
+        {hov&&<circle cx={hov.x} cy={hov.y} r="6" fill={c} stroke={T.bg} strokeWidth="2"/>}
+        {hov&&(
+          <g>
+            <rect x={Math.min(hov.x+6,W-100)} y={hov.y-28} width="90" height="22" rx="6" fill={T.card} stroke={c} strokeWidth="1"/>
+            <text x={Math.min(hov.x+51,W-55)} y={hov.y-12} textAnchor="middle" fill={T.text} fontSize="11" fontFamily="Syne">{hov.val}</text>
+          </g>
+        )}
       </svg>
     </div>
   );
@@ -607,6 +633,7 @@ function LineChart({ data, xKey, yKey, T, height=180, color }) {
 // PIE CHART (SVG)
 function PieChart({ data, labelKey, valueKey, T, size=200 }) {
   if (!data||!data.length) return null;
+  const [hov,setHov]=useState(null);
   const total = sum(data.map(d=>+d[valueKey]||0));
   let angle = -Math.PI/2;
   const cx=size/2, cy=size/2, r=size/2-24;
@@ -617,19 +644,36 @@ function PieChart({ data, labelKey, valueKey, T, size=200 }) {
     angle+=sweep;
     const x2=cx+r*Math.cos(angle), y2=cy+r*Math.sin(angle);
     const large=sweep>Math.PI?1:0;
-    return { path:`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`, color:T.chartBars[i%T.chartBars.length], label:d[labelKey], val, pct:((val/total)*100).toFixed(1) };
+    const midAngle=angle-sweep/2;
+    return { path:`M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} Z`, color:T.chartBars[i%T.chartBars.length], label:d[labelKey], val, pct:((val/total)*100).toFixed(1), midAngle };
   });
   return (
     <div style={{...css.flex(20,"row","center","center"),flexWrap:"wrap"}}>
       <svg width={size} height={size} style={{minWidth:size}}>
-        {slices.map((s,i)=><path key={i} d={s.path} fill={s.color} opacity=".88" stroke={T.bg2} strokeWidth="2"/>)}
+        {slices.map((s,i)=>(
+          <path key={i} d={s.path} fill={s.color}
+            opacity={hov===i?1:.82}
+            stroke={T.bg2} strokeWidth={hov===i?3:2}
+            style={{transform:hov===i?`translate(${Math.cos(s.midAngle)*6}px,${Math.sin(s.midAngle)*6}px)`:"",transition:"all .2s",cursor:"pointer"}}
+            onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
+        ))}
         <circle cx={cx} cy={cy} r={r*0.45} fill={T.card}/>
-        <text x={cx} y={cy-6} textAnchor="middle" fill={T.text} fontSize="14" fontWeight="700" fontFamily="Syne">{slices.length}</text>
-        <text x={cx} y={cy+10} textAnchor="middle" fill={T.text2} fontSize="9" fontFamily="Syne">categories</text>
+        {hov!==null?(
+          <>
+            <text x={cx} y={cy-8} textAnchor="middle" fill={slices[hov]?.color} fontSize="13" fontWeight="800" fontFamily="Syne">{slices[hov]?.pct}%</text>
+            <text x={cx} y={cy+8} textAnchor="middle" fill={T.text2} fontSize="8" fontFamily="Syne">{String(slices[hov]?.label).slice(0,12)}</text>
+          </>
+        ):(
+          <>
+            <text x={cx} y={cy-6} textAnchor="middle" fill={T.text} fontSize="14" fontWeight="700" fontFamily="Syne">{slices.length}</text>
+            <text x={cx} y={cy+10} textAnchor="middle" fill={T.text2} fontSize="9" fontFamily="Syne">categories</text>
+          </>
+        )}
       </svg>
       <div style={{display:"flex",flexDirection:"column",gap:6}}>
         {slices.map((s,i)=>(
-          <div key={i} style={{...css.flex(8,"row","center"),fontSize:12}}>
+          <div key={i} onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}
+            style={{...css.flex(8,"row","center"),fontSize:12,cursor:"pointer",padding:"2px 6px",borderRadius:6,background:hov===i?s.color+"22":"transparent",transition:"all .15s"}}>
             <div style={{width:10,height:10,borderRadius:2,background:s.color,flexShrink:0}}/>
             <span style={{color:T.text2,maxWidth:100,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.label}</span>
             <span style={{color:T.text,fontWeight:600,fontFamily:"'JetBrains Mono',monospace",marginLeft:4}}>{s.pct}%</span>
