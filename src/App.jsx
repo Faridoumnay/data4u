@@ -1276,7 +1276,7 @@ function CleanPage({ data, setData, T }) {
                 </div>
                 <div style={{...css.flex(8)}}>
                   {t.badge&&<Badge label={t.badge} color={T.accent} T={T}/>}
-                  <button className="btn-secondary" onClick={t.fn} style={{padding:"6px 14px",borderRadius:8,fontSize:12,whiteSpace:"nowrap"}}>Apply</button>
+                  <button onClick={t.fn} style={{padding:"6px 14px",borderRadius:8,fontSize:12,whiteSpace:"nowrap",background:T.accent,color:"#000",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"'Syne',sans-serif"}}>Apply</button>
                 </div>
               </div>
             ))}
@@ -2278,3 +2278,18 @@ export default function Data4U() {
           <div className="fade-up">
             {page==="home"      &&<HomePage     user={user} setPage={setPage} data={data} T={T}/>}
             {page==="upload"    &&<UploadPage   user={user} setData={setData} setPage={setPage} T={T}/>}
+            {page==="clean"     &&<CleanPage    data={data} setData={setData} T={T}/>}
+            {page==="visualize" &&<VisualizePage data={data} T={T}/>}
+            {page==="predict"   &&<PredictPage  data={data} T={T}/>}
+            {page==="dashboard" &&<DashboardPage data={data} T={T}/>}
+            {page==="report"    &&<ReportPage   data={data} user={user} T={T}/>}
+            {page==="admin"     &&<AdminPanel   currentUser={user} T={T}/>}
+          {page==="pricing"   &&<PricingPage   user={user} setUser={setUser} T={T}/>}
+          </div>
+        </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
