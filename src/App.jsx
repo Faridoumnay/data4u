@@ -1020,17 +1020,22 @@ function CleanPage({ data, setData, T }) {
 
   const handleNormalize=()=>{
     const numCols=getNumCols(d);
-    const newData=d.map(row=>{
-      const nr={...row};
-      numCols.forEach(c=>{
-        const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));
-        const mn=minn(vals), mx=maxx(vals), rng=mx-mn||1;
-        nr[c]=+(((+row[c])-mn)/rng).toFixed(4);
+    if(!numCols.length){setCleanLog(l=>[...l,"⚠️ No numeric columns found"]);return;}
+    setCleanLog(l=>[...l,"⏳ Normalizing..."]);
+    setTimeout(()=>{
+      const newData=d.map(row=>{
+        const nr={...row};
+        numCols.forEach(c=>{
+          const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));
+          const mn=minn(vals),mx=maxx(vals),rng=mx-mn||1;
+          const v=+row[c];
+          nr[c]=isNaN(v)?row[c]:+((v-mn)/rng).toFixed(4);
+        });
+        return nr;
       });
-      return nr;
-    });
-    setCleanLog(l=>[...l,`📐 Normalized ${numCols.length} numeric column(s) to [0,1] range`]);
-    setData(newData);
+      setCleanLog(l=>l.filter(x=>!x.includes("⏳")).concat("📐 Normalized "+numCols.length+" numeric column(s) to [0,1]"));
+      setData(newData);
+    },50);
   };
 
   const filtered=search?d.filter(row=>cols.some(c=>String(row[c]??"").toLowerCase().includes(search.toLowerCase()))):d;
@@ -1173,31 +1178,38 @@ function CleanPage({ data, setData, T }) {
                 <div style={{fontWeight:700,color:T.text}}>⚠️ Detection Results — <span style={{color:T.orange}}>{outlierResults.count} outliers found</span></div>
                 <button onClick={()=>setOutlierResults(null)} style={{background:"transparent",border:"none",color:T.text2,cursor:"pointer",fontSize:18}}>×</button>
               </div>
-              {/* Visual: scatter showing outliers vs clean */}
-              {getNumCols(d).length>=2&&(()=>{
-                const cx=getNumCols(d)[0], cy=getNumCols(d)[1];
-                const outlierSet=new Set(outlierResults.outlierRows.map(r=>JSON.stringify(r)));
-                const W=560,H=200,pad=30;
-                const allX=d.map(r=>+r[cx]).filter(v=>!isNaN(v));
-                const allY=d.map(r=>+r[cy]).filter(v=>!isNaN(v));
-                const minX=Math.min(...allX),maxX=Math.max(...allX),minY=Math.min(...allY),maxY=Math.max(...allY);
-                const px=v=>pad+(v-minX)/(maxX-minX||1)*(W-2*pad);
-                const py=v=>H-pad-(v-minY)/(maxY-minY||1)*(H-2*pad);
+              {/* Visual: box plots per column showing outliers */}
+              {getNumCols(d).length>=1&&(()=>{
+                const numCols=getNumCols(d).slice(0,6);
+                const outlierRowsSet=new Set(outlierResults.outlierRows.map((_,i)=>i));
+                const redetect=detectOutliers(d,outlierResults.method);
                 return(
                   <div style={{marginBottom:16}}>
-                    <div style={{fontSize:12,color:T.text2,marginBottom:6}}>📊 Outlier Visualization: <b>{cx}</b> vs <b>{cy}</b></div>
-                    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{background:T.bg3,borderRadius:10}}>
-                      {d.map((row,i)=>{
-                        const isOut=outlierSet.has(JSON.stringify(row));
-                        const x=px(+row[cx]),y=py(+row[cy]);
-                        if(isNaN(x)||isNaN(y)) return null;
-                        return <circle key={i} cx={x} cy={y} r={isOut?5:3}
-                          fill={isOut?"#FF4444":"#00D4FF"} opacity={isOut?0.9:0.4}/>;
+                    <div style={{fontSize:12,color:T.text2,marginBottom:8,fontWeight:600}}>📊 Outlier Distribution per Column</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:12}}>
+                      {numCols.map(c=>{
+                        const vals=d.map((r,i)=>({v:+r[c],isOut:redetect.has(i)})).filter(x=>!isNaN(x.v));
+                        const mn=Math.min(...vals.map(x=>x.v)),mx=Math.max(...vals.map(x=>x.v)),rng=mx-mn||1;
+                        const W=180,H=80,pad=10;
+                        return(
+                          <div key={c} style={{background:T.bg3,borderRadius:8,padding:"8px 10px",minWidth:180}}>
+                            <div style={{fontSize:11,color:T.text2,marginBottom:4,fontWeight:600}}>{c}</div>
+                            <svg width={W} height={H}>
+                              {vals.map((x,i)=>{
+                                const cx2=pad+(x.v-mn)/rng*(W-2*pad);
+                                const cy2=H/2+(Math.random()-0.5)*30;
+                                return <circle key={i} cx={cx2} cy={cy2} r={x.isOut?4:2}
+                                  fill={x.isOut?"#FF4444":"#00D4FF"} opacity={x.isOut?0.9:0.3}/>;
+                              })}
+                            </svg>
+                            <div style={{fontSize:10,color:T.text3}}>{vals.filter(x=>x.isOut).length} outliers</div>
+                          </div>
+                        );
                       })}
-                    </svg>
-                    <div style={{display:"flex",gap:16,marginTop:6,fontSize:11,color:T.text3}}>
-                      <span><span style={{display:"inline-block",width:8,height:8,borderRadius:"50%",background:"#FF4444",marginRight:4}}/> Outliers ({outlierResults.count})</span>
-                      <span style={{marginLeft:8}}>🔵 Clean ({outlierResults.cleanRows.length})</span>
+                    </div>
+                    <div style={{display:"flex",gap:16,marginTop:8,fontSize:11,color:T.text3}}>
+                      <span>🔴 Outliers ({outlierResults.count})</span>
+                      <span>🔵 Clean ({outlierResults.cleanRows.length})</span>
                     </div>
                   </div>
                 );
@@ -1253,31 +1265,38 @@ function CleanPage({ data, setData, T }) {
               {label:"Standardization (Z-score)",sub:"Mean=0, Std=1",badge:"ML Best Practice",fn:()=>{
                 const numCols=getNumCols(d);
                 if(!numCols.length){setCleanLog(l=>[...l,"⚠️ No numeric columns found"]);return;}
-                const newData=d.map(row=>{
-                  const nr={...row};
-                  numCols.forEach(c=>{
-                    const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));
-                    const m=avg(vals),s=std(vals)||1;
-                    const v=+row[c];
-                    nr[c]=isNaN(v)?row[c]:+((v-m)/s).toFixed(4);
+                setCleanLog(l=>[...l,"⏳ Standardizing..."]);
+                setTimeout(()=>{
+                  const newData=d.map(row=>{
+                    const nr={...row};
+                    numCols.forEach(c=>{
+                      const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));
+                      const m=avg(vals),s=std(vals)||1;
+                      const v=+row[c];
+                      nr[c]=isNaN(v)?row[c]:+((v-m)/s).toFixed(4);
+                    });
+                    return nr;
                   });
-                  return nr;
-                });
-                setData(newData);setCleanLog(l=>[...l,"📐 Standardized "+numCols.length+" numeric column(s)"]);
+                  setData(newData);
+                  setCleanLog(l=>l.filter(x=>!x.includes("⏳")).concat("📐 Standardized "+numCols.length+" numeric column(s)"));
+                },50);
               }},
-              {label:"One-Hot Encoding",sub:"Convert categorical → binary columns (max 20 unique)",fn:()=>{
+              {label:"One-Hot Encoding",sub:"Convert categorical → binary columns (max 10 unique)",fn:()=>{
                 const catCols=getCatCols(d);
                 if(!catCols.length){setCleanLog(l=>[...l,"⚠️ No categorical columns found"]);return;}
-                let newData=[...d];
-                let encoded=0;
-                catCols.forEach(c=>{
-                  const uniq=[...new Set(d.map(r=>r[c]))].filter(Boolean).slice(0,20);
-                  if(uniq.length>15){setCleanLog(l=>[...l,"⚠️ Skipped '"+c+"' — too many unique values ("+uniq.length+")"]);return;}
-                  newData=newData.map(row=>{const nr={...row};uniq.forEach(v=>{nr[c+"_"+v]=row[c]===v?1:0;});delete nr[c];return nr;});
-                  encoded++;
-                });
-                setData(newData);
-                setCleanLog(l=>[...l,"🔢 One-Hot Encoded "+encoded+" column(s)"]);
+                setCleanLog(l=>[...l,"⏳ Encoding..."]);
+                setTimeout(()=>{
+                  let newData=[...d];
+                  let encoded=0;
+                  catCols.forEach(c=>{
+                    const uniq=[...new Set(d.map(r=>r[c]))].filter(Boolean);
+                    if(uniq.length>10){setCleanLog(l=>[...l,"⚠️ Skipped '"+c+"' — "+uniq.length+" unique values (max 10)"]);return;}
+                    newData=newData.map(row=>{const nr={...row};uniq.forEach(v=>{nr[c+"_"+v]=row[c]===v?1:0;});delete nr[c];return nr;});
+                    encoded++;
+                  });
+                  setData(newData);
+                  setCleanLog(l=>l.filter(x=>!x.includes("⏳")).concat("🔢 One-Hot Encoded "+encoded+" column(s)"));
+                },50);
               }},
               {label:"Extract Date Features",sub:"Year, Month, Day from date columns",fn:()=>{
                 const dateCols=getDateCols(d);
