@@ -1252,15 +1252,32 @@ function CleanPage({ data, setData, T }) {
             {[{label:"Min-Max Normalization",sub:"Scale to [0,1] range",fn:handleNormalize,badge:"Common"},
               {label:"Standardization (Z-score)",sub:"Mean=0, Std=1",badge:"ML Best Practice",fn:()=>{
                 const numCols=getNumCols(d);
-                const newData=d.map(row=>{const nr={...row};numCols.forEach(c=>{const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));const m=avg(vals),s=std(vals)||1;nr[c]=+(((+row[c])-m)/s).toFixed(4);});return nr;});
-                setData(newData);setCleanLog(l=>[...l,"📐 Standardized "+numCols.length+" numeric column(s) — Mean=0, Std=1"]);
+                if(!numCols.length){setCleanLog(l=>[...l,"⚠️ No numeric columns found"]);return;}
+                const newData=d.map(row=>{
+                  const nr={...row};
+                  numCols.forEach(c=>{
+                    const vals=d.map(r=>+r[c]).filter(v=>!isNaN(v));
+                    const m=avg(vals),s=std(vals)||1;
+                    const v=+row[c];
+                    nr[c]=isNaN(v)?row[c]:+((v-m)/s).toFixed(4);
+                  });
+                  return nr;
+                });
+                setData(newData);setCleanLog(l=>[...l,"📐 Standardized "+numCols.length+" numeric column(s)"]);
               }},
-              {label:"One-Hot Encoding",sub:"Convert categorical → binary columns",fn:()=>{
+              {label:"One-Hot Encoding",sub:"Convert categorical → binary columns (max 20 unique)",fn:()=>{
                 const catCols=getCatCols(d);
                 if(!catCols.length){setCleanLog(l=>[...l,"⚠️ No categorical columns found"]);return;}
                 let newData=[...d];
-                catCols.forEach(c=>{const uniq=[...new Set(d.map(r=>r[c]))].filter(Boolean);newData=newData.map(row=>{const nr={...row};uniq.forEach(v=>{nr[c+"_"+v]=row[c]===v?1:0;});delete nr[c];return nr;});});
-                setData(newData);setCleanLog(l=>[...l,"🔢 One-Hot Encoded "+catCols.length+" categorical column(s)"]);
+                let encoded=0;
+                catCols.forEach(c=>{
+                  const uniq=[...new Set(d.map(r=>r[c]))].filter(Boolean).slice(0,20);
+                  if(uniq.length>15){setCleanLog(l=>[...l,"⚠️ Skipped '"+c+"' — too many unique values ("+uniq.length+")"]);return;}
+                  newData=newData.map(row=>{const nr={...row};uniq.forEach(v=>{nr[c+"_"+v]=row[c]===v?1:0;});delete nr[c];return nr;});
+                  encoded++;
+                });
+                setData(newData);
+                setCleanLog(l=>[...l,"🔢 One-Hot Encoded "+encoded+" column(s)"]);
               }},
               {label:"Extract Date Features",sub:"Year, Month, Day from date columns",fn:()=>{
                 const dateCols=getDateCols(d);
