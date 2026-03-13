@@ -1,5 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
+// TensorFlow.js loaded dynamically
+let tf = null;
+const loadTF = async () => {
+  if(tf) return tf;
+  return new Promise((resolve)=>{
+    const s=document.createElement("script");
+    s.src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js";
+    s.onload=()=>{ tf=window.tf; resolve(tf); };
+    document.head.appendChild(s);
+  });
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN & AUTH
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1571,56 +1583,133 @@ function PredictPage({ data, T }) {
     {id:"prophet",label:"Prophet",sub:"Facebook time series model",icon:"🔮",free:false},
   ];
 
-  const runModel=()=>{
-    if(!target||features.length===0||!d||d.length===0){return;}
+  const runModel=async()=>{
+    if(!target||features.length===0||!d||d.length===0) return;
     setRunning(true);
-    setTimeout(()=>{
-      try{
+    try {
+      // Normalize data
       const ys=d.map(r=>+r[target]||0);
-      const my=avg(ys);
-      // Use first feature for main regression line
-      const mainFeat=features[0];
-      const xs=d.map(r=>+r[mainFeat]||0);
-      const mx=avg(xs);
-      const slope=sum(xs.map((x,i)=>(x-mx)*(ys[i]-my)))/(sum(xs.map(x=>(x-mx)**2))||1);
-      const intercept=my-slope*mx;
-      let preds=xs.map(x=>slope*x+intercept);
-      // Multi-feature boost simulation
-      if(features.length>1){
-        const boost=features.slice(1).reduce((acc,f)=>{
-          const fxs=d.map(r=>+r[f]||0);
-          const fmx=avg(fxs);
-          const fslope=sum(fxs.map((x,i)=>(x-fmx)*(ys[i]-my)))/(sum(fxs.map(x=>(x-fmx)**2))||1);
-          return acc.map((p,i)=>p+fslope*(fxs[i]-fmx)*0.3);
-        },preds);
-        preds=boost;
+      const Xs=d.map(r=>features.map(f=>+r[f]||0));
+      const yMin=Math.min(...ys), yMax=Math.max(...ys)||1;
+      const xMins=features.map((_,fi)=>Math.min(...Xs.map(x=>x[fi])));
+      const xMaxs=features.map((_,fi)=>Math.max(...Xs.map(x=>x[fi]))||1);
+      const normY=ys.map(v=>(v-yMin)/(yMax-yMin||1));
+      const normX=Xs.map(row=>row.map((v,fi)=>(v-xMins[fi])/(xMaxs[fi]-xMins[fi]||1)));
+
+      // Split 80/20
+      const splitIdx=Math.floor(d.length*.8);
+      const trainX=normX.slice(0,splitIdx), trainY=normY.slice(0,splitIdx);
+      const testX=normX.slice(splitIdx), testY=normY.slice(splitIdx);
+
+      let preds=[];
+
+      if(model==="linear"||model==="gb") {
+        // Real TF.js linear/neural model
+        const tfLib=await loadTF();
+        const xsTensor=tfLib.tensor2d(trainX);
+        const ysTensor=tfLib.tensor2d(trainY,[trainY.length,1]);
+        const layers=model==="gb"?[
+          tfLib.layers.dense({units:64,activation:"relu",inputShape:[features.length]}),
+          tfLib.layers.dropout({rate:0.1}),
+          tfLib.layers.dense({units:32,activation:"relu"}),
+          tfLib.layers.dense({units:1})
+        ]:[
+          tfLib.layers.dense({units:1,inputShape:[features.length]})
+        ];
+        const m2=tfLib.sequential({layers});
+        m2.compile({optimizer:tfLib.train.adam(0.01),loss:"meanSquaredError"});
+        await m2.fit(xsTensor,[ysTensor],{epochs:model==="gb"?80:50,verbose:0,batchSize:32});
+        const allPreds=m2.predict(tfLib.tensor2d(normX)).arraySync().flat();
+        preds=allPreds.map(p=>p*(yMax-yMin)+yMin);
+        xsTensor.dispose();ysTensor.dispose();m2.dispose();
+      } else if(model==="rf") {
+        // Random Forest approximation — multiple linear models with feature subsets
+        const tfLib=await loadTF();
+        const nTrees=10;
+        const treePreds=await Promise.all(Array(nTrees).fill(0).map(async(_,t)=>{
+          const featSubset=features.filter((_,i)=>Math.random()>0.3||features.length===1);
+          const fi=featSubset.map(f=>features.indexOf(f));
+          const subX=normX.map(row=>fi.map(i=>row[i]));
+          const sampleIdx=Array(Math.floor(trainX.length*.8)).fill(0).map(()=>Math.floor(Math.random()*trainX.length));
+          const sampX=sampleIdx.map(i=>subX[i]);
+          const sampY=sampleIdx.map(i=>trainY[i]);
+          const xT=tfLib.tensor2d(sampX.length?sampX:subX);
+          const yT=tfLib.tensor2d(sampY.length?sampY:trainY,[sampY.length||trainY.length,1]);
+          const m2=tfLib.sequential({layers:[
+            tfLib.layers.dense({units:16,activation:"relu",inputShape:[fi.length||1]}),
+            tfLib.layers.dense({units:1})
+          ]});
+          m2.compile({optimizer:tfLib.train.adam(0.02),loss:"meanSquaredError"});
+          await m2.fit(xT,yT,{epochs:30,verbose:0});
+          const p=m2.predict(tfLib.tensor2d(subX)).arraySync().flat();
+          xT.dispose();yT.dispose();m2.dispose();
+          return p;
+        }));
+        preds=normX.map((_,i)=>{
+          const avg2=treePreds.reduce((s,tp)=>s+(tp[i]||0),0)/nTrees;
+          return avg2*(yMax-yMin)+yMin;
+        });
+      } else if(model==="arima"||model==="prophet") {
+        // Real ARIMA-like: use TF.js LSTM for time series
+        const tfLib=await loadTF();
+        const lag=Math.min(5,Math.floor(ys.length/4));
+        const seqX=[], seqY=[];
+        for(let i=lag;i<normY.length;i++){
+          seqX.push(normY.slice(i-lag,i));
+          seqY.push(normY[i]);
+        }
+        const xT=tfLib.tensor3d(seqX.map(s=>[s]));
+        const yT=tfLib.tensor2d(seqY,[seqY.length,1]);
+        const lstm=tfLib.sequential({layers:[
+          tfLib.layers.lstm({units:32,inputShape:[1,lag],returnSequences:false}),
+          tfLib.layers.dense({units:1})
+        ]});
+        lstm.compile({optimizer:tfLib.train.adam(0.01),loss:"meanSquaredError"});
+        await lstm.fit(xT,yT,{epochs:50,verbose:0,batchSize:16});
+        // Predict
+        const allPreds=[];
+        for(let i=0;i<normY.length;i++){
+          if(i<lag){allPreds.push(ys[i]);continue;}
+          const inp=tfLib.tensor3d([[normY.slice(i-lag,i)]]);
+          const p=lstm.predict(inp).arraySync()[0][0];
+          allPreds.push(p*(yMax-yMin)+yMin);
+          inp.dispose();
+        }
+        preds=allPreds;
+        xT.dispose();yT.dispose();lstm.dispose();
       }
-      const ss_res=sum(ys.map((y,i)=>(y-preds[i])**2));
+
+      // Metrics
+      const my=avg(ys);
+      const ss_res=sum(ys.map((y,i)=>(y-(preds[i]||0))**2));
       const ss_tot=sum(ys.map(y=>(y-my)**2))||1;
-      let r2=Math.max(0,+(1-ss_res/ss_tot).toFixed(4));
-      let mae=+(avg(ys.map((y,i)=>Math.abs(y-preds[i])))).toFixed(2);
-      let rmse=+(Math.sqrt(avg(ys.map((y,i)=>(y-preds[i])**2)))).toFixed(2);
-      // Model-specific adjustments
-      if(model==="rf"){r2=Math.min(1,+(r2+0.07).toFixed(4));mae=+(mae*.85).toFixed(2);rmse=+(rmse*.85).toFixed(2);}
-      if(model==="gb"){r2=Math.min(1,+(r2+0.09).toFixed(4));mae=+(mae*.80).toFixed(2);rmse=+(rmse*.80).toFixed(2);}
-      // Actual vs predicted chart data
-      const chartData=ys.slice(0,50).map((y,i)=>({actual:+y.toFixed(2),predicted:preds[i]!=null?+preds[i].toFixed(2):0,index:i+1}));
-      // Forecast
-      const lastX=maxx(xs);
-      const forecastData=Array(horizon).fill(0).map((_,i)=>({
-        step:i+1,
-        predicted:+(slope*(lastX+i*std(xs)/horizon)+intercept+((Math.random()-.5)*rmse*.3)).toFixed(2),
-      }));
-      // Interpretation
+      const r2=Math.max(0,Math.min(1,+(1-ss_res/ss_tot).toFixed(4)));
+      const mae=+(avg(ys.map((y,i)=>Math.abs(y-(preds[i]||0))))).toFixed(2);
+      const rmse=+(Math.sqrt(avg(ys.map((y,i)=>(y-(preds[i]||0))**2)))).toFixed(2);
+
+      const chartData=ys.slice(0,60).map((y,i)=>({actual:+y.toFixed(2),predicted:+((preds[i]||0)).toFixed(2),index:i+1}));
+
+      // Forecast next N steps
+      const lastVals=normY.slice(-5);
+      const forecastData=Array(horizon).fill(0).map((_,i)=>{
+        const trend=(normY[normY.length-1]-normY[0])/(normY.length||1);
+        const noise=(Math.random()-.5)*0.05;
+        const pred=Math.max(0,Math.min(1,normY[normY.length-1]+trend*(i+1)+noise));
+        return {step:i+1,predicted:+(pred*(yMax-yMin)+yMin).toFixed(2)};
+      });
+
       const quality=r2>.8?"🟢 Excellent":r2>.6?"🟡 Good":r2>.4?"🟠 Moderate":"🔴 Weak";
       const interp=r2>.8?`Model explains ${(r2*100).toFixed(0)}% of variance in "${target}" — very reliable predictions.`:
-        r2>.6?`Model explains ${(r2*100).toFixed(0)}% of variance — decent predictions with some error.`:
-        r2>.4?`Model explains ${(r2*100).toFixed(0)}% of variance — moderate fit, consider more features.`:
-        `Only ${(r2*100).toFixed(0)}% variance explained — weak relationship between features and target.`;
-      setResult({r2,mae,rmse,slope:+slope.toFixed(3),intercept:+intercept.toFixed(1),model,forecastData,chartData,trainSize:Math.round(d.length*.8),testSize:Math.round(d.length*.2),quality,interp,featuresUsed:features});
-      }catch(e){console.error("Model error:",e);}
-      setRunning(false);
-    },1400);
+        r2>.6?`Model explains ${(r2*100).toFixed(0)}% of variance — good predictions.`:
+        r2>.4?`Model explains ${(r2*100).toFixed(0)}% of variance — moderate fit, try adding more features.`:
+        `Only ${(r2*100).toFixed(0)}% variance explained — features u target m3ndhomch 3ala9a kbira, jarrab features khra.`;
+
+      setResult({r2,mae,rmse,model,forecastData,chartData,trainSize:splitIdx,testSize:d.length-splitIdx,quality,interp,featuresUsed:features});
+    } catch(e) {
+      console.error("Model error:",e);
+      setResult(null);
+    }
+    setRunning(false);
   };
 
   return (
