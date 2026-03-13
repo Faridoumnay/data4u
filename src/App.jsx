@@ -1522,9 +1522,10 @@ function PredictPage({ data, T }) {
   ];
 
   const runModel=()=>{
-    if(!target||features.length===0){return;}
+    if(!target||features.length===0||!d||d.length===0){return;}
     setRunning(true);
     setTimeout(()=>{
+      try{
       const ys=d.map(r=>+r[target]||0);
       const my=avg(ys);
       // Use first feature for main regression line
@@ -1553,7 +1554,7 @@ function PredictPage({ data, T }) {
       if(model==="rf"){r2=Math.min(1,+(r2+0.07).toFixed(4));mae=+(mae*.85).toFixed(2);rmse=+(rmse*.85).toFixed(2);}
       if(model==="gb"){r2=Math.min(1,+(r2+0.09).toFixed(4));mae=+(mae*.80).toFixed(2);rmse=+(rmse*.80).toFixed(2);}
       // Actual vs predicted chart data
-      const chartData=ys.slice(0,50).map((y,i)=>({actual:+y.toFixed(2),predicted:+preds[i].toFixed(2),index:i+1}));
+      const chartData=ys.slice(0,50).map((y,i)=>({actual:+y.toFixed(2),predicted:preds[i]!=null?+preds[i].toFixed(2):0,index:i+1}));
       // Forecast
       const lastX=maxx(xs);
       const forecastData=Array(horizon).fill(0).map((_,i)=>({
@@ -1567,6 +1568,7 @@ function PredictPage({ data, T }) {
         r2>.4?`Model explains ${(r2*100).toFixed(0)}% of variance — moderate fit, consider more features.`:
         `Only ${(r2*100).toFixed(0)}% variance explained — weak relationship between features and target.`;
       setResult({r2,mae,rmse,slope:+slope.toFixed(3),intercept:+intercept.toFixed(1),model,forecastData,chartData,trainSize:Math.round(d.length*.8),testSize:Math.round(d.length*.2),quality,interp,featuresUsed:features});
+      }catch(e){console.error("Model error:",e);}
       setRunning(false);
     },1400);
   };
