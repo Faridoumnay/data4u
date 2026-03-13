@@ -1493,11 +1493,19 @@ function PredictPage({ data, T }) {
   const numCols=getNumCols(d).filter(c=>c!=="id");
   const dateCols=getDateCols(d);
   const [model,setModel]=useState("linear");
-  const [target,setTarget]=useState(numCols[1]||numCols[0]||"");
-  const [features,setFeatures]=useState(numCols.filter((_,i)=>i!==0).slice(0,3));
+  const [target,setTarget]=useState("");
+  const [features,setFeatures]=useState([]);
   const [result,setResult]=useState(null);
   const [running,setRunning]=useState(false);
   const [horizon,setHorizon]=useState(12);
+
+  // Init target and features when data loads
+  useEffect(()=>{
+    if(numCols.length>0 && !target){
+      setTarget(numCols[0]);
+      setFeatures(numCols.slice(1,4));
+    }
+  },[numCols.length]);
 
   const toggleFeature=(col)=>{
     if(col===target) return;
