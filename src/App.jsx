@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 // ─────────────────────────────────────────────────────────────────────────────
 // ADMIN & AUTH
 // ─────────────────────────────────────────────────────────────────────────────
-const ADMIN_EMAIL = "admin@data4u.com";
+const ADMIN_EMAIL = "foumnay@gmail.com";
 const USERS_DB = {};
 USERS_DB[ADMIN_EMAIL] = { email: ADMIN_EMAIL, name: "Admin", plan: "enterprise", uploads: 0, isAdmin: true, banned: false, joinedAt: new Date().toISOString(), uploadList: [], datasetsAnalyzed: 0 };
 
@@ -199,6 +199,7 @@ function AuthScreen({ onDone, T }) {
   const [step,setStep]=useState(1);
   const [email,setEmail]=useState("");
   const [name,setName]=useState("");
+  const [password,setPassword]=useState("");
   const [plan,setPlan]=useState("pro");
   const [code,setCode]=useState("");
   const [codeIn,setCodeIn]=useState("");
@@ -214,7 +215,7 @@ function AuthScreen({ onDone, T }) {
     if(!email.includes("@")){setErr("Invalid email address.");return;}
     setErr("");setLoading(true);
     try{
-      const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+      const r=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
       const data=await r.json();
       if(!r.ok){setErr(data.error||"Login failed.");setLoading(false);return;}
       setLoading(false);
@@ -228,7 +229,7 @@ function AuthScreen({ onDone, T }) {
     setErr("");setLoading(true);
     // Check if email exists in Supabase first
     try{
-      const chk=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email})});
+      const chk=await fetch("/api/login",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password})});
       const chkData=await chk.json();
       if(chk.ok && chkData.success){setErr("Email already registered. Please sign in.");setLoading(false);return;}
     }catch(e){}
@@ -252,9 +253,10 @@ function AuthScreen({ onDone, T }) {
 
   const finish=async()=>{
     if(!name.trim()){setErr("Please enter your name.");return;}
+    if(!password||password.length<6){setErr("Password must be at least 6 characters.");return;}
     setErr("");setLoading(true);
     try{
-      const r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,name,plan})});
+      const r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,name,plan,password})});
       const data=await r.json();
       if(!r.ok){setErr(data.error||"Registration failed.");setLoading(false);return;}
       setLoading(false);
@@ -357,19 +359,20 @@ function AuthScreen({ onDone, T }) {
                 ))}
               </div>
 
-              {/* ── LOGIN: direct, no code ── */}
+              {/* ── LOGIN: email + password ── */}
               {step===1&&tab==="login"&&(
                 <>
                   <input className="input-style" placeholder="Email address" value={email}
                     onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleLogin()}
                     style={{width:"100%",padding:"12px 16px",borderRadius:10,fontSize:14,marginBottom:12}}/>
-                  <button className="btn-primary" onClick={handleLogin}
+                  <input className="input-style" type="password" placeholder="Password"
+                    value={password||""} onChange={e=>setPassword(e.target.value)}
+                    onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                    style={{width:"100%",padding:"12px 16px",borderRadius:10,fontSize:14,marginBottom:12}}/>
+                  <button className="btn-primary" onClick={handleLogin} disabled={loading}
                     style={{width:"100%",padding:"13px 0",borderRadius:10,fontSize:15}}>
-                    → Sign In
+                    {loading?"⏳ Signing in...":"🔑 Sign In"}
                   </button>
-                  <div style={{marginTop:10,fontSize:12,color:T.text3,textAlign:"center"}}>
-                    Admin & registered users sign in instantly — no code required.
-                  </div>
                 </>
               )}
 
@@ -405,6 +408,9 @@ function AuthScreen({ onDone, T }) {
                 <>
                   <input className="input-style" placeholder="Full name" value={name}
                     onChange={e=>setName(e.target.value)}
+                    style={{width:"100%",padding:"12px 16px",borderRadius:10,fontSize:14,marginBottom:12}}/>
+                  <input className="input-style" type="password" placeholder="Create password" value={password||""} 
+                    onChange={e=>setPassword(e.target.value)}
                     style={{width:"100%",padding:"12px 16px",borderRadius:10,fontSize:14,marginBottom:20}}/>
                   <div style={{fontSize:13,color:T.text2,marginBottom:12,fontWeight:600}}>Choose your plan:</div>
                   <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
